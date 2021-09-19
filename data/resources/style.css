@@ -1,4 +1,77 @@
-.title-header{
-  font-size: 36px;
+.vert-speed-positive {
+  color: #1c71d8;
+}
+
+.vert-speed-negative {
+  color: #ed333b;
+}
+
+.on-ground {
+  background-color: #2ec27e;
+}
+
+.duck-state-1 {
+  background-color: #77767b;
+}
+
+.duck-state-2 {
+  background-color: #241f31;
+}
+
+.on-ladder {
+  background-color: #865e3c;
+}
+
+.water-level-1 {
+  background-color: #62a0ea;
+}
+
+.water-level-2 {
+  background-color: #1a5fb4;
+}
+
+.jump-pressed {
+  background-color: #f5c211;
+}
+
+.duck-pressed {
+  background-color: #dc8add;
+}
+
+.forward-pressed,
+.right-pressed,
+.up-pressed {
+  background-color: #3584e4;
+}
+
+.back-pressed,
+.left-pressed,
+.down-pressed {
+  background-color: #ed333b;
+}
+
+.forward-pressed > label,
+.back-pressed > label,
+.left-pressed > label,
+.right-pressed > label,
+.up-pressed > label,
+.down-pressed > label {
+  color: white;
+  font-weight: bold;
+}
+
+.use-pressed,
+.attack-1-pressed,
+.attack-2-pressed,
+.reload-pressed {
+  background-color: #f5c211;
+}
+
+.not-important {
+  color: #77767b;
+}
+
+.client-state-not-5 {
+  color: #ed333b;
   font-weight: bold;
 }

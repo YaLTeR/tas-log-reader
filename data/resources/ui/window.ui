@@ -16,11 +16,22 @@
       </item>
     </section>
   </menu>
-  <template class="ExampleApplicationWindow" parent="GtkApplicationWindow">
+  <template class="TlrApplicationWindow" parent="GtkApplicationWindow">
     <property name="default-width">600</property>
     <property name="default-height">400</property>
     <child type="titlebar">
       <object class="GtkHeaderBar" id="headerbar">
+        <child type="start">
+          <object class="GtkButton" id="button_open">
+            <property name="child">
+              <object class="AdwButtonContent">
+                <property name="icon-name">document-open-symbolic</property>
+                <property name="label" translatable="yes">_Open</property>
+                <property name="use-underline">True</property>
+              </object>
+            </property>
+          </object>
+        </child>
         <child type="end">
           <object class="GtkMenuButton" id="appmenu_button">
             <property name="icon-name">open-menu-symbolic</property>
@@ -30,12 +41,7 @@
       </object>
     </child>
     <child>
-      <object class="GtkLabel" id="label">
-        <property name="label" translatable="yes">Hello world!</property>
-        <style>
-          <class name="title-header"/>
-        </style>
-      </object>
+      <object class="TlrTable" id="table" />
     </child>
   </template>
 </interface>

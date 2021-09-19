@@ -8,3 +8,6 @@ src/config.rs
 *.ui.in~
 *.ui~
 .flatpak/
+install/
+install-debugopt/
+builddir-debugopt/

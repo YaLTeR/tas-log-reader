@@ -1,7 +1,7 @@
 {
     "app-id": "rs.bxt.TasLogReader.Devel",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "40",
+    "runtime-version": "master",
     "sdk": "org.gnome.Sdk",
     "sdk-extensions": ["org.freedesktop.Sdk.Extension.rust-stable"],
     "command": "tas-log-reader",
@@ -10,8 +10,7 @@
         "--socket=wayland",
         "--device=dri",
         "--talk-name=org.a11y.Bus",
-        "--env=RUST_LOG=tas-log-reader=debug",
-        "--env=G_MESSAGES_DEBUG=none",
+        "--env=G_MESSAGES_DEBUG=TasLogReader",
         "--env=RUST_BACKTRACE=1"
     ],
     "build-options" : {
@@ -26,8 +25,25 @@
     },
     "modules": [
         {
+            "name" : "libadwaita",
+            "buildsystem" : "meson",
+            "builddir" : true,
+            "config-opts" : [
+                "-Dexamples=false",
+                "-Dtests=false"
+            ],
+            "sources" : [
+                {
+                    "type" : "git",
+                    "url" : "https://gitlab.gnome.org/GNOME/libadwaita.git",
+                    "branch" : "main"
+                }
+            ]
+        },
+        {
             "name": "tas-log-reader",
             "buildsystem": "meson",
+            "builddir": true,
             "run-tests": true,
             "config-opts": ["-Dprofile=development"],
             "sources": [

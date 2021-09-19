@@ -22,6 +22,9 @@ rust_sources = files(
   'application.rs',
   'config.rs',
   'main.rs',
+  'row.rs',
+  'table.rs',
+  'tas_log.rs',
   'window.rs',
 )
 

@@ -2,35 +2,44 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
 
-use crate::application::ExampleApplication;
+use crate::application::Application;
 use crate::config::{APP_ID, PROFILE};
 
 mod imp {
-    use super::*;
+    use gettextrs::gettext;
+    use gtk::{CompositeTemplate, ResponseType};
 
-    use gtk::CompositeTemplate;
+    use super::*;
+    use crate::table::Table;
 
     #[derive(Debug, CompositeTemplate)]
     #[template(resource = "/rs/bxt/TasLogReader/ui/window.ui")]
-    pub struct ExampleApplicationWindow {
+    pub struct ApplicationWindow {
         #[template_child]
         pub headerbar: TemplateChild<gtk::HeaderBar>,
+        #[template_child]
+        pub button_open: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub table: TemplateChild<Table>,
+
         pub settings: gio::Settings,
     }
 
-    impl Default for ExampleApplicationWindow {
+    impl Default for ApplicationWindow {
         fn default() -> Self {
             Self {
                 headerbar: TemplateChild::default(),
+                button_open: TemplateChild::default(),
+                table: TemplateChild::default(),
                 settings: gio::Settings::new(APP_ID),
             }
         }
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for ExampleApplicationWindow {
-        const NAME: &'static str = "ExampleApplicationWindow";
-        type Type = super::ExampleApplicationWindow;
+    impl ObjectSubclass for ApplicationWindow {
+        const NAME: &'static str = "TlrApplicationWindow";
+        type Type = super::ApplicationWindow;
         type ParentType = gtk::ApplicationWindow;
 
         fn class_init(klass: &mut Self::Class) {
@@ -43,22 +52,47 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for ExampleApplicationWindow {
-        fn constructed(&self, obj: &Self::Type) {
-            self.parent_constructed(obj);
+    impl ObjectImpl for ApplicationWindow {
+        fn constructed(&self, self_: &Self::Type) {
+            self.parent_constructed(self_);
 
             // Devel Profile
             if PROFILE == "Devel" {
-                obj.add_css_class("devel");
+                self_.add_css_class("devel");
             }
 
             // Load latest window state
-            obj.load_window_size();
+            self_.load_window_size();
+
+            self.button_open.connect_clicked({
+                let self_ = self_.downgrade();
+                move |_| {
+                    let self_ = self_.upgrade().unwrap();
+
+                    let file_chooser = gtk::FileChooserNativeBuilder::new()
+                        .transient_for(&self_)
+                        .action(gtk::FileChooserAction::Open)
+                        // Translators: file chooser dialog title.
+                        .title(&gettext("Open TAS log"))
+                        .transient_for(&self_)
+                        .modal(true)
+                        .build();
+
+                    glib::MainContext::default().spawn_local(async move {
+                        if file_chooser.run_future().await != ResponseType::Accept {
+                            return;
+                        }
+
+                        let file = file_chooser.file().unwrap();
+                        self_.open(file);
+                    });
+                }
+            });
         }
     }
 
-    impl WidgetImpl for ExampleApplicationWindow {}
-    impl WindowImpl for ExampleApplicationWindow {
+    impl WidgetImpl for ApplicationWindow {}
+    impl WindowImpl for ApplicationWindow {
         // Save window state on delete event
         fn close_request(&self, window: &Self::Type) -> gtk::Inhibit {
             if let Err(err) = window.save_window_size() {
@@ -70,23 +104,32 @@ mod imp {
         }
     }
 
-    impl ApplicationWindowImpl for ExampleApplicationWindow {}
+    impl ApplicationWindowImpl for ApplicationWindow {}
+
+    impl ApplicationWindow {
+        pub fn open(&self, file: gio::File) {
+            self.table.open(file);
+        }
+    }
 }
 
 glib::wrapper! {
-    pub struct ExampleApplicationWindow(ObjectSubclass<imp::ExampleApplicationWindow>)
+    pub struct ApplicationWindow(ObjectSubclass<imp::ApplicationWindow>)
         @extends gtk::Widget, gtk::Window, gtk::ApplicationWindow,
         @implements gio::ActionMap, gio::ActionGroup;
 }
 
-impl ExampleApplicationWindow {
-    pub fn new(app: &ExampleApplication) -> Self {
-        glib::Object::new(&[("application", app)])
-            .expect("Failed to create ExampleApplicationWindow")
+impl ApplicationWindow {
+    pub fn new(app: &Application) -> Self {
+        glib::Object::new(&[("application", app)]).expect("Failed to create ApplicationWindow")
+    }
+
+    fn open(&self, file: gio::File) {
+        imp::ApplicationWindow::from_instance(self).open(file)
     }
 
     fn save_window_size(&self) -> Result<(), glib::BoolError> {
-        let self_ = imp::ExampleApplicationWindow::from_instance(self);
+        let self_ = imp::ApplicationWindow::from_instance(self);
 
         let (width, height) = self.default_size();
 
@@ -101,7 +144,7 @@ impl ExampleApplicationWindow {
     }
 
     fn load_window_size(&self) {
-        let self_ = imp::ExampleApplicationWindow::from_instance(self);
+        let self_ = imp::ApplicationWindow::from_instance(self);
 
         let width = self_.settings.int("window-width");
         let height = self_.settings.int("window-height");

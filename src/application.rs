@@ -1,3 +1,4 @@
+use adw::subclass::prelude::*;
 use glib::clone;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -5,30 +6,31 @@ use gtk::{gdk, gio, glib};
 use log::{debug, info};
 
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
-use crate::window::ExampleApplicationWindow;
+use crate::window::ApplicationWindow;
 
 mod imp {
-    use super::*;
     use glib::WeakRef;
     use once_cell::sync::OnceCell;
 
+    use super::*;
+
     #[derive(Debug, Default)]
-    pub struct ExampleApplication {
-        pub window: OnceCell<WeakRef<ExampleApplicationWindow>>,
+    pub struct Application {
+        pub window: OnceCell<WeakRef<ApplicationWindow>>,
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for ExampleApplication {
-        const NAME: &'static str = "ExampleApplication";
-        type Type = super::ExampleApplication;
-        type ParentType = gtk::Application;
+    impl ObjectSubclass for Application {
+        const NAME: &'static str = "TlrApplication";
+        type Type = super::Application;
+        type ParentType = adw::Application;
     }
 
-    impl ObjectImpl for ExampleApplication {}
+    impl ObjectImpl for Application {}
 
-    impl ApplicationImpl for ExampleApplication {
+    impl ApplicationImpl for Application {
         fn activate(&self, app: &Self::Type) {
-            debug!("GtkApplication<ExampleApplication>::activate");
+            debug!("AdwApplication<Application>::activate");
 
             if let Some(window) = self.window.get() {
                 let window = window.upgrade().unwrap();
@@ -37,7 +39,7 @@ mod imp {
                 return;
             }
 
-            let window = ExampleApplicationWindow::new(app);
+            let window = ApplicationWindow::new(app);
             self.window
                 .set(window.downgrade())
                 .expect("Window already set.");
@@ -46,7 +48,7 @@ mod imp {
         }
 
         fn startup(&self, app: &Self::Type) {
-            debug!("GtkApplication<ExampleApplication>::startup");
+            debug!("AdwApplication<Application>::startup");
             self.parent_startup(app);
 
             // Set icons for shell
@@ -58,30 +60,28 @@ mod imp {
         }
     }
 
-    impl GtkApplicationImpl for ExampleApplication {}
+    impl GtkApplicationImpl for Application {}
+    impl AdwApplicationImpl for Application {}
 }
 
 glib::wrapper! {
-    pub struct ExampleApplication(ObjectSubclass<imp::ExampleApplication>)
-        @extends gio::Application, gtk::Application,
+    pub struct Application(ObjectSubclass<imp::Application>)
+        @extends gio::Application, gtk::Application, adw::Application,
         @implements gio::ActionMap, gio::ActionGroup;
 }
 
-impl ExampleApplication {
+impl Application {
     pub fn new() -> Self {
         glib::Object::new(&[
             ("application-id", &Some(APP_ID)),
             ("flags", &gio::ApplicationFlags::empty()),
-            (
-                "resource-base-path",
-                &Some("/rs/bxt/TasLogReader/"),
-            ),
+            ("resource-base-path", &Some("/rs/bxt/TasLogReader/")),
         ])
         .expect("Application initialization failed...")
     }
 
-    fn main_window(&self) -> ExampleApplicationWindow {
-        let imp = imp::ExampleApplication::from_instance(self);
+    fn main_window(&self) -> ApplicationWindow {
+        let imp = imp::Application::from_instance(self);
         imp.window.get().unwrap().upgrade().unwrap()
     }
 
