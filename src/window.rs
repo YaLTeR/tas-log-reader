@@ -84,7 +84,7 @@ mod imp {
     impl ApplicationWindowImpl for Window {}
 
     impl Window {
-        pub fn open(&self, file: gio::File) {
+        pub fn open(&self, file: &gio::File) {
             self.table.open(file);
         }
     }
@@ -102,7 +102,7 @@ impl Window {
         glib::Object::new(&[("application", app)]).unwrap()
     }
 
-    fn open(&self, file: gio::File) {
+    pub fn open(&self, file: &gio::File) {
         self.imp().open(file);
     }
 
@@ -122,7 +122,7 @@ impl Window {
             }
 
             if let Some(file) = file_chooser.file() {
-                obj.open(file);
+                obj.open(&file);
             }
         }));
     }

@@ -641,7 +641,7 @@ mod imp {
     impl WidgetImpl for Table {}
 
     impl Table {
-        pub fn open(&self, file: gio::File) {
+        pub fn open(&self, file: &gio::File) {
             match file.load_contents(None::<&Cancellable>) {
                 Ok((contents, _)) => {
                     fn from_slice_lenient<'a, T: serde::Deserialize<'a>>(
@@ -733,7 +733,7 @@ glib::wrapper! {
 }
 
 impl Table {
-    pub fn open(&self, file: gio::File) {
-        imp::Table::from_instance(self).open(file)
+    pub fn open(&self, file: &gio::File) {
+        self.imp().open(file)
     }
 }

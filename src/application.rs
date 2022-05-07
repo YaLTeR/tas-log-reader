@@ -31,6 +31,21 @@ mod imp {
             obj.open_new_window();
         }
 
+        fn open(&self, obj: &Self::Type, files: &[gio::File], _hint: &str) {
+            debug!(
+                "open: {:?}",
+                files
+                    .iter()
+                    .map(|x| x.uri().into())
+                    .collect::<Vec<String>>()
+            );
+
+            for file in files {
+                let window = obj.open_new_window();
+                window.open(file);
+            }
+        }
+
         fn startup(&self, obj: &Self::Type) {
             debug!("startup");
 
@@ -62,7 +77,7 @@ impl Application {
     pub fn new() -> Self {
         glib::Object::new(&[
             ("application-id", &config::APP_ID),
-            ("flags", &gio::ApplicationFlags::empty()),
+            ("flags", &gio::ApplicationFlags::HANDLES_OPEN),
             ("resource-base-path", &"/rs/bxt/TasLogReader/"),
         ])
         .unwrap()
