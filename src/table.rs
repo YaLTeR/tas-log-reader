@@ -106,7 +106,8 @@ mod imp {
             self.column_frame.set_factory(Some(&make_factory(
                 || {
                     let label = MAKE_LABEL();
-                    label.set_halign(gtk::Align::End);
+                    label.set_width_chars(5);
+                    label.set_xalign(1.);
                     label
                 },
                 |label, row: Row| {
@@ -130,6 +131,7 @@ mod imp {
                 || {
                     let label = MAKE_LABEL();
                     label.add_css_class("not-important");
+                    label.set_width_chars(2);
                     label
                 },
                 |label, row: Row| {
