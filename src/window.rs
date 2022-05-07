@@ -19,10 +19,6 @@ mod imp {
     #[template(resource = "/rs/bxt/TasLogReader/ui/window.ui")]
     pub struct Window {
         #[template_child]
-        pub headerbar: TemplateChild<gtk::HeaderBar>,
-        #[template_child]
-        pub button_open: TemplateChild<gtk::Button>,
-        #[template_child]
         pub table: TemplateChild<Table>,
     }
 

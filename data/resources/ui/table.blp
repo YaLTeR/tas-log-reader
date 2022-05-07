@@ -1,0 +1,160 @@
+using Gtk 4.0;
+
+template TlrTable {
+  layout-manager: BinLayout {};
+
+  ScrolledWindow {
+    ColumnView column_view {
+      enable-rubberband: true;
+      show-row-separators: true;
+      show-column-separators: true;
+
+      styles ["data-table"]
+
+      ColumnViewColumn column_frame {
+        title: _("Frame");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_time {
+        title: _("Time");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_ms {
+        title: _("Ms");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_speed {
+        title: _("Speed");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_vel_yaw {
+        title: _("Vel. Yaw");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_vert_speed {
+        title: _("Vert. Speed");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_ground {
+        title: _("G");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_duck_state {
+        title: _("K");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_ladder_state {
+        title: _("L");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_water_level {
+        title: _("W");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_jump {
+        title: _("J");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_duck {
+        title: _("D");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_forward {
+        title: _("F");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_side {
+        title: _("S");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_up {
+        title: _("U");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_yaw {
+        title: _("Yaw");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_pitch {
+        title: _("Pitch");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_health {
+        title: _("Health");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_armor {
+        title: _("Armor");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_use {
+        title: _("E");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_attack_1 {
+        title: _("1");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_attack_2 {
+        title: _("2");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_reload {
+        title: _("R");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_client_state {
+        title: _("Cl. State");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_pos_z {
+        title: _("Z Position");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_pos_x {
+        title: _("X Position");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_pos_y {
+        title: _("Y Position");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_shared_seed {
+        title: _("Sh. Seed");
+        resizable: true;
+      }
+
+      ColumnViewColumn column_remainder {
+        title: _("Fr. Time Rem.");
+        resizable: true;
+      }
+    }
+  }
+}

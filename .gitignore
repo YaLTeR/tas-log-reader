@@ -6,7 +6,7 @@ src/config.rs
 *.ui~
 *#*.ui#
 /builddir/
-/po/identity.pot
+/po/*.pot
 /repository/
 /*.flatpak
 /_build/

@@ -1,0 +1,43 @@
+using Gtk 4.0;
+using Adw 1;
+
+menu primary_menu {
+  section {
+    item {
+      label: _("_Keyboard Shortcuts");
+      action: "win.show-help-overlay";
+    }
+
+    item {
+      label: _("_About TAS Log Reader");
+      action: "win.about";
+    }
+  }
+}
+
+template TlrWindow : ApplicationWindow {
+  default-width: 600;
+  default-height: 400;
+
+  [titlebar]
+  HeaderBar {
+    [start]
+    Button {
+      child: .AdwButtonContent {
+        icon-name: "document-open-symbolic";
+        label: _("_Open");
+        use-underline: true;
+      };
+
+      clicked => on_open_clicked() swapped;
+    }
+
+    [end]
+    MenuButton {
+      icon-name: "open-menu-symbolic";
+      menu-model: primary_menu;
+    }
+  }
+
+  .TlrTable table {}
+}
