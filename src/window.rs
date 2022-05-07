@@ -9,6 +9,7 @@ use crate::config;
 mod imp {
     use gettextrs::gettext;
     use glib::warn;
+    use gtk::gdk::{Key, ModifierType};
     use gtk::CompositeTemplate;
 
     use super::*;
@@ -31,6 +32,9 @@ mod imp {
         fn class_init(klass: &mut Self::Class) {
             Self::bind_template(klass);
             Self::Type::bind_template_callbacks(klass);
+
+            klass.install_action("win.open", None, |obj, _, _| obj.on_open_clicked());
+            klass.add_binding_action(Key::o, ModifierType::CONTROL_MASK, "win.open", None);
 
             klass.install_action("win.about", None, |window, _, _| {
                 gtk::AboutDialog::builder()
