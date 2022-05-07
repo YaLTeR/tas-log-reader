@@ -7,7 +7,7 @@ name: CI
 
 jobs:
   rustfmt:
-    name: Rustfmt
+    name: rustfmt
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
@@ -32,7 +32,7 @@ jobs:
     - uses: actions/checkout@v2
     - uses: bilelmoussaoui/flatpak-github-actions/flatpak-builder@v4
       with:
-        bundle: tas-log-reader.flatpak
+        bundle: gtk-rust-template.flatpak
         manifest-path: build-aux/rs.bxt.TasLogReader.Devel.json
         run-tests: true
         cache-key: flatpak-builder-${{ github.sha }}

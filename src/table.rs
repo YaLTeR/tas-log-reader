@@ -10,9 +10,8 @@ mod imp {
     use gtk::CompositeTemplate;
 
     use super::*;
-    use crate::config::G_LOG_DOMAIN;
     use crate::row::Row;
-    use crate::tas_log;
+    use crate::{tas_log, G_LOG_DOMAIN};
 
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/rs/bxt/TasLogReader/ui/table.ui")]
@@ -111,7 +110,7 @@ mod imp {
                     label
                 },
                 |label, row: Row| {
-                    label.set_label(&row.frame_number().to_string());
+                    label.set_text(&row.frame_number().to_string());
                 },
             )));
 
@@ -123,7 +122,7 @@ mod imp {
                 },
                 |label, row: Row| {
                     let text = (|| Some(format!("{:.3}", row.physics_frame().frame_time?)))();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -135,7 +134,7 @@ mod imp {
                 },
                 |label, row: Row| {
                     let text = (|| Some(row.command_frame()?.msec.to_string()))();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -155,7 +154,7 @@ mod imp {
                         let speed = vel[0].hypot(vel[1]);
                         Some(format!("{:.3}", speed))
                     })();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -175,7 +174,7 @@ mod imp {
                         let angle = vel[1].atan2(vel[0]) * 180. / std::f32::consts::PI;
                         Some(format!("{:.3}", angle))
                     })();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -198,7 +197,7 @@ mod imp {
                             Some(format!("{:.1}", vel[2]))
                         })();
 
-                        label.set_label(text.as_deref().unwrap_or_default());
+                        label.set_text(text.as_deref().unwrap_or_default());
                     },
                     |label| {
                         label.remove_css_class("vert-speed-negative");
@@ -347,7 +346,7 @@ mod imp {
                             _ => None,
                         }
                     })();
-                    label.set_label(text.unwrap_or_default());
+                    label.set_text(text.unwrap_or_default());
                 },
                 |label| {
                     label.parent().unwrap().remove_css_class("forward-pressed");
@@ -373,7 +372,7 @@ mod imp {
                             _ => None,
                         }
                     })();
-                    label.set_label(text.unwrap_or_default());
+                    label.set_text(text.unwrap_or_default());
                 },
                 |label| {
                     label.parent().unwrap().remove_css_class("right-pressed");
@@ -399,7 +398,7 @@ mod imp {
                             _ => None,
                         }
                     })();
-                    label.set_label(text.unwrap_or_default());
+                    label.set_text(text.unwrap_or_default());
                 },
                 |label| {
                     label.parent().unwrap().remove_css_class("up-pressed");
@@ -415,7 +414,7 @@ mod imp {
                 },
                 |label, row: Row| {
                     let text = (|| Some(format!("{:.3}", row.command_frame()?.view_angles[0])))();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -427,7 +426,7 @@ mod imp {
                 },
                 |label, row: Row| {
                     let text = (|| Some(format!("{:.3}", row.command_frame()?.view_angles[1])))();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -439,7 +438,7 @@ mod imp {
                 },
                 |label, row: Row| {
                     let text = (|| Some(format!("{:.0}", row.command_frame()?.health?)))();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -451,7 +450,7 @@ mod imp {
                 },
                 |label, row: Row| {
                     let text = (|| Some(format!("{:.1}", row.command_frame()?.armor?)))();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -539,7 +538,7 @@ mod imp {
                     |label, row: Row| {
                         let state = row.physics_frame().client_state;
 
-                        label.set_label(&state.to_string());
+                        label.set_text(&state.to_string());
 
                         if state != 5 {
                             label.add_css_class("client-state-not-5");
@@ -558,7 +557,7 @@ mod imp {
                 },
                 |label, row: Row| {
                     let text = (|| Some(row.command_frame()?.shared_seed.to_string()))();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -575,7 +574,7 @@ mod imp {
                             row.command_frame()?.post_pm_state?.position[2]
                         ))
                     })();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -592,7 +591,7 @@ mod imp {
                             row.command_frame()?.post_pm_state?.position[0]
                         ))
                     })();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -609,7 +608,7 @@ mod imp {
                             row.command_frame()?.post_pm_state?.position[1]
                         ))
                     })();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
 
@@ -627,7 +626,7 @@ mod imp {
                             row.command_frame()?.frame_time_remainder?
                         ))
                     })();
-                    label.set_label(text.as_deref().unwrap_or_default());
+                    label.set_text(text.as_deref().unwrap_or_default());
                 },
             )));
         }
@@ -667,7 +666,7 @@ mod imp {
                                 }
 
                                 let mut command_frames =
-                                    mem::replace(&mut physics_frame.command_frames, Vec::new());
+                                    mem::take(&mut physics_frame.command_frames);
                                 for command_frame in command_frames.drain(..) {
                                     number += 1;
                                     model.append(&Row::new(
