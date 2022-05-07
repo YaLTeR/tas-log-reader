@@ -1,0 +1,73 @@
+.vert-speed-positive {
+  color: #62a0ea;
+}
+
+.vert-speed-negative {
+  color: #f66151;
+}
+
+.on-ground {
+  background-color: #26a269;
+}
+
+.duck-state-1 {
+  background-color: #5e5c64;
+}
+
+.duck-state-2 {
+  background-color: #c0bfbc;
+}
+
+.on-ladder {
+  background-color: #865e3c;
+}
+
+.water-level-1 {
+  background-color: #3584e4;
+}
+
+.water-level-2 {
+  background-color: #1a5fb4;
+}
+
+.jump-pressed {
+  background-color: #e5a50a;
+}
+
+.duck-pressed {
+  background-color: #c061cb;
+}
+
+.forward-pressed,
+.right-pressed,
+.up-pressed {
+  background-color: #1a5fb4;
+}
+
+.back-pressed,
+.left-pressed,
+.down-pressed {
+  background-color: #a51d2d;
+}
+
+.forward-pressed > label,
+.back-pressed > label,
+.left-pressed > label,
+.right-pressed > label,
+.up-pressed > label,
+.down-pressed > label {
+  color: white;
+  font-weight: bold;
+}
+
+.use-pressed,
+.attack-1-pressed,
+.attack-2-pressed,
+.reload-pressed {
+  background-color: #e5a50a;
+}
+
+.client-state-not-5 {
+  color: #f66151;
+  font-weight: bold;
+}

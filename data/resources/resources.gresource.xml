@@ -6,5 +6,6 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/table.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/window.ui</file>
     <file compressed="true">style.css</file>
+    <file compressed="true">style-dark.css</file>
   </gresource>
 </gresources>
