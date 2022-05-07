@@ -38,6 +38,10 @@ template TlrWindow : ApplicationWindow {
       clicked => on_open_clicked() swapped;
     }
 
+    title-widget: Adw.WindowTitle title {
+      title: bind TlrWindow.title;
+    };
+
     [end]
     MenuButton {
       icon-name: "open-menu-symbolic";

@@ -42,7 +42,7 @@ mod imp {
 
             for file in files {
                 let window = obj.open_new_window();
-                window.open(file);
+                window.open(file.clone());
             }
         }
 

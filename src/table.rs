@@ -644,6 +644,8 @@ mod imp {
 
     impl Table {
         pub fn open(&self, file: &gio::File) {
+            self.column_view.set_model(None::<&gtk::SelectionModel>);
+
             match file.load_contents(None::<&Cancellable>) {
                 Ok((contents, _)) => {
                     fn from_slice_lenient<'a, T: serde::Deserialize<'a>>(

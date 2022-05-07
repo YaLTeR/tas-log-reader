@@ -20,6 +20,8 @@ mod imp {
     #[template(resource = "/rs/bxt/TasLogReader/ui/window.ui")]
     pub struct Window {
         #[template_child]
+        pub title: TemplateChild<adw::WindowTitle>,
+        #[template_child]
         pub table: TemplateChild<Table>,
     }
 
@@ -84,8 +86,26 @@ mod imp {
     impl ApplicationWindowImpl for Window {}
 
     impl Window {
-        pub fn open(&self, file: &gio::File) {
+        pub async fn open(&self, file: &gio::File) {
             self.table.open(file);
+
+            let info = file
+                .query_info_future(
+                    "standard::display-name",
+                    gio::FileQueryInfoFlags::NONE,
+                    glib::PRIORITY_DEFAULT,
+                )
+                .await;
+
+            let name = match info {
+                Ok(info) => info.display_name(),
+                Err(err) => {
+                    warn!("error retrieving file display name: {err:?}");
+                    "".into()
+                }
+            };
+
+            self.title.set_subtitle(&name);
         }
     }
 }
@@ -102,8 +122,10 @@ impl Window {
         glib::Object::new(&[("application", app)]).unwrap()
     }
 
-    pub fn open(&self, file: &gio::File) {
-        self.imp().open(file);
+    pub fn open(&self, file: gio::File) {
+        glib::MainContext::default().spawn_local(clone!(@weak self as obj => async move {
+            obj.imp().open(&file).await;
+        }));
     }
 
     #[template_callback]
@@ -132,7 +154,7 @@ impl Window {
             }
 
             if let Some(file) = file_chooser.file() {
-                obj.open(&file);
+                obj.imp().open(&file).await;
             }
         }));
     }
