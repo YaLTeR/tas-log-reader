@@ -118,7 +118,7 @@ mod imp {
             self.column_time.set_factory(Some(&make_factory(
                 || {
                     let label = MAKE_LABEL();
-                    label.add_css_class("not-important");
+                    label.add_css_class("dim-label");
                     label
                 },
                 |label, row: Row| {
@@ -130,7 +130,7 @@ mod imp {
             self.column_ms.set_factory(Some(&make_factory(
                 || {
                     let label = MAKE_LABEL();
-                    label.add_css_class("not-important");
+                    label.add_css_class("dim-label");
                     label.set_width_chars(2);
                     label
                 },
@@ -534,7 +534,7 @@ mod imp {
                 .set_factory(Some(&make_factory_unbind(
                     || {
                         let label = MAKE_LABEL();
-                        label.add_css_class("not-important");
+                        label.add_css_class("dim-label");
                         label
                     },
                     |label, row: Row| {
@@ -554,7 +554,7 @@ mod imp {
             self.column_shared_seed.set_factory(Some(&make_factory(
                 || {
                     let label = MAKE_LABEL();
-                    label.add_css_class("not-important");
+                    label.add_css_class("dim-label");
                     label
                 },
                 |label, row: Row| {
@@ -618,7 +618,7 @@ mod imp {
                 || {
                     let label = MAKE_LABEL();
                     label.set_width_chars(7);
-                    label.add_css_class("not-important");
+                    label.add_css_class("dim-label");
                     label
                 },
                 |label, row: Row| {
