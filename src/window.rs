@@ -116,6 +116,16 @@ impl Window {
             .title(&gettext("Open TAS log"))
             .build();
 
+        let filter = gtk::FileFilter::new();
+        filter.set_name(Some(&gettext("TAS log files")));
+        filter.add_suffix("log");
+        file_chooser.add_filter(&filter);
+
+        let filter = gtk::FileFilter::new();
+        filter.set_name(Some(&gettext("All files")));
+        filter.add_pattern("*");
+        file_chooser.add_filter(&filter);
+
         glib::MainContext::default().spawn_local(clone!(@weak self as obj => async move {
             if file_chooser.run_future().await != gtk::ResponseType::Accept {
                 return;
