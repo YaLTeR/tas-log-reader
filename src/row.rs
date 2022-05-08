@@ -1,22 +1,22 @@
-use glib::subclass::types::ObjectSubclassExt;
+use glib::subclass::prelude::*;
 use gtk::glib;
 
 use crate::tas_log::{CommandFrame, PhysicsFrame};
 
-mod imp {
-    use std::cell::Cell;
+#[derive(Debug, Clone)]
+pub struct RowData {
+    pub physics_frame: PhysicsFrame,
+    pub command_frame: Option<CommandFrame>,
+}
 
-    use glib::subclass::prelude::*;
+mod imp {
     use once_cell::unsync::OnceCell;
 
     use super::*;
-    use crate::tas_log::PhysicsFrame;
 
     #[derive(Debug, Default)]
     pub struct Row {
-        pub frame_number: Cell<usize>,
-        pub physics_frame: OnceCell<PhysicsFrame>,
-        pub command_frame: OnceCell<Option<CommandFrame>>,
+        pub data: OnceCell<RowData>,
     }
 
     #[glib::object_subclass]
@@ -34,34 +34,21 @@ glib::wrapper! {
 }
 
 impl Row {
-    pub fn new(
-        frame_number: usize,
-        physics_frame: PhysicsFrame,
-        command_frame: Option<CommandFrame>,
-    ) -> Self {
-        let self_ = glib::Object::new(&[]).unwrap();
-
-        let priv_ = imp::Row::from_instance(&self_);
-        priv_.frame_number.set(frame_number);
-        priv_.physics_frame.set(physics_frame).unwrap();
-        priv_.command_frame.set(command_frame).unwrap();
-
-        self_
+    pub fn new(data: RowData) -> Self {
+        let obj: Self = glib::Object::new(&[]).unwrap();
+        obj.imp().data.set(data).unwrap();
+        obj
     }
 
-    pub fn frame_number(&self) -> usize {
-        imp::Row::from_instance(self).frame_number.get()
+    pub fn data(&self) -> &RowData {
+        self.imp().data.get().unwrap()
     }
 
     pub fn physics_frame(&self) -> &PhysicsFrame {
-        imp::Row::from_instance(self).physics_frame.get().unwrap()
+        &self.data().physics_frame
     }
 
     pub fn command_frame(&self) -> Option<&CommandFrame> {
-        imp::Row::from_instance(self)
-            .command_frame
-            .get()
-            .unwrap()
-            .as_ref()
+        self.data().command_frame.as_ref()
     }
 }

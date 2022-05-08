@@ -1,16 +1,18 @@
+use std::{fmt, mem};
+
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
+use tracing::{info_span, warn};
+
+use crate::row::{Row, RowData};
+use crate::tas_log::PhysicsFrame;
 
 mod imp {
-    use std::mem;
-
     use gtk::{gio, CompositeTemplate};
-    use tracing::{error, info_span, instrument, Instrument};
+    use tracing::{error, instrument, Instrument};
 
     use super::*;
-    use crate::row::Row;
-    use crate::tas_log;
 
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/rs/bxt/TasLogReader/ui/table.ui")]
@@ -102,17 +104,20 @@ mod imp {
                 label
             };
 
-            self.column_frame.set_factory(Some(&make_factory(
-                || {
+            self.column_frame.set_factory(Some(&{
+                let factory = gtk::SignalListItemFactory::new();
+                factory.connect_setup(move |_, item| {
                     let label = MAKE_LABEL();
                     label.set_width_chars(5);
                     label.set_xalign(1.);
-                    label
-                },
-                |label, row: Row| {
-                    label.set_text(&row.frame_number().to_string());
-                },
-            )));
+                    item.set_child(Some(&label));
+                });
+                factory.connect_bind(move |_, item| {
+                    let label: gtk::Label = item.child().unwrap().downcast().unwrap();
+                    label.set_text(&(item.position() + 1).to_string());
+                });
+                factory
+            }));
 
             self.column_time.set_factory(Some(&make_factory(
                 || {
@@ -644,58 +649,124 @@ mod imp {
     impl Table {
         #[instrument(skip_all, fields(file = ?file.uri()))]
         pub async fn open(&self, file: &gio::File) {
-            self.column_view.set_model(None::<&gtk::SelectionModel>);
-
             match file
                 .load_contents_future()
                 .instrument(info_span!("load_contents"))
                 .await
             {
                 Ok((contents, _)) => {
-                    #[instrument(skip_all)]
-                    fn from_slice_lenient<'a, T: serde::Deserialize<'a>>(
-                        v: &'a [u8],
-                    ) -> Result<T, serde_json::Error> {
-                        let mut cur = std::io::Cursor::new(v);
-                        let mut de =
-                            serde_json::Deserializer::new(serde_json::de::IoRead::new(&mut cur));
-                        serde::Deserialize::deserialize(&mut de)
-                    }
-
-                    match from_slice_lenient::<tas_log::Log>(&contents) {
-                        Ok(mut log) => {
-                            let model = gio::ListStore::new(Row::static_type());
-
-                            let mut number = 0;
-                            for mut physics_frame in log.physics_frames.drain(..) {
-                                if physics_frame.command_frames.is_empty() {
-                                    number += 1;
-                                    model.append(&Row::new(number, physics_frame, None));
-                                    continue;
-                                }
-
-                                let mut command_frames =
-                                    mem::take(&mut physics_frame.command_frames);
-                                for command_frame in command_frames.drain(..) {
-                                    number += 1;
-                                    model.append(&Row::new(
-                                        number,
-                                        physics_frame.clone(),
-                                        Some(command_frame),
-                                    ));
-                                }
-                            }
-
-                            self.column_view
-                                .set_model(Some(&gtk::MultiSelection::new(Some(&model))));
-                        }
-                        Err(err) => error!("{:?}", err),
-                    }
+                    let rows = deserialize_tas_log(&contents);
+                    self.column_view
+                        .set_model(Some(&gtk::MultiSelection::new(Some(&rows))));
                 }
-                Err(err) => error!("{:?}", err),
+                Err(err) => {
+                    error!("error reading file: {err:?}");
+                    self.column_view.set_model(None::<&gtk::SelectionModel>);
+                }
             }
         }
     }
+}
+
+/// Deserializes a potentially-incomplete TAS log JSON and returns the `Row`s.
+fn deserialize_tas_log(bytes: &[u8]) -> gio::ListStore {
+    use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
+    use serde::Deserializer;
+
+    // We use a custom visitor which adds rows to the `ListStore` as it's parsing them. This way on
+    // error we can return all rows parsed up until the error point. We also avoid the need to
+    // allocate an extra `Vec` for all physics frames.
+    struct RootObjectVisitor<'de> {
+        rows: &'de gio::ListStore,
+    }
+
+    impl<'de> Visitor<'de> for RootObjectVisitor<'de> {
+        type Value = ();
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            write!(formatter, "root TAS log object")
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            while let Some(key) = map.next_key::<&str>()? {
+                if key == "pf" {
+                    map.next_value_seed(PhysicsFramesDeserializer { rows: self.rows })?;
+                } else {
+                    map.next_value::<IgnoredAny>()?;
+                }
+            }
+
+            Ok(())
+        }
+    }
+
+    struct PhysicsFramesDeserializer<'de> {
+        rows: &'de gio::ListStore,
+    }
+
+    impl<'de> DeserializeSeed<'de> for PhysicsFramesDeserializer<'de> {
+        type Value = ();
+
+        fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            deserializer.deserialize_seq(PhysicsFramesVisitor { rows: self.rows })
+        }
+    }
+
+    struct PhysicsFramesVisitor<'de> {
+        rows: &'de gio::ListStore,
+    }
+
+    impl<'de> Visitor<'de> for PhysicsFramesVisitor<'de> {
+        type Value = ();
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            write!(formatter, "TAS log physics frames array")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            while let Some(mut physics_frame) = seq.next_element::<PhysicsFrame>()? {
+                if physics_frame.command_frames.is_empty() {
+                    let data = RowData {
+                        physics_frame,
+                        command_frame: None,
+                    };
+                    self.rows.append(&Row::new(data));
+                    continue;
+                }
+
+                let mut command_frames = mem::take(&mut physics_frame.command_frames);
+                for command_frame in command_frames.drain(..) {
+                    let data = RowData {
+                        physics_frame: physics_frame.clone(),
+                        command_frame: Some(command_frame),
+                    };
+                    self.rows.append(&Row::new(data));
+                }
+            }
+
+            Ok(())
+        }
+    }
+
+    let rows = gio::ListStore::new(Row::static_type());
+    let mut deserializer = serde_json::Deserializer::from_slice(bytes);
+
+    if let Err(err) = info_span!("deserialize")
+        .in_scope(|| deserializer.deserialize_map(RootObjectVisitor { rows: &rows }))
+    {
+        warn!("error parsing TAS log: {err:?}");
+    }
+
+    rows
 }
 
 fn make_factory<Widget, T>(
