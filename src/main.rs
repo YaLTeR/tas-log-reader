@@ -39,5 +39,5 @@ fn main() {
     let res = gio::Resource::load(config::RESOURCES_FILE).expect("Could not load gresource file");
     gio::resources_register(&res);
 
-    std::process::exit(Application::new().run());
+    Application::new().run();
 }
