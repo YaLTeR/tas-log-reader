@@ -5,13 +5,13 @@ use gtk::{gio, glib};
 mod imp {
     use std::mem;
 
-    use glib::error;
     use gtk::gio::{self, Cancellable};
     use gtk::CompositeTemplate;
+    use tracing::error;
 
     use super::*;
     use crate::row::Row;
-    use crate::{tas_log, G_LOG_DOMAIN};
+    use crate::tas_log;
 
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/rs/bxt/TasLogReader/ui/table.ui")]

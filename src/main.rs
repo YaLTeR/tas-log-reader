@@ -8,18 +8,14 @@ mod window;
 
 use application::Application;
 use gettextrs::*;
-use glib::{info, warn, GlibLogger, GlibLoggerDomain, GlibLoggerFormat};
 use gtk::prelude::*;
 use gtk::{gio, glib};
-
-const G_LOG_DOMAIN: &str = "TasLogReader";
+use tracing::{info, warn};
 
 fn main() {
-    static GLIB_LOGGER: GlibLogger =
-        GlibLogger::new(GlibLoggerFormat::LineAndFile, GlibLoggerDomain::CrateTarget);
-
-    let _ = log::set_logger(&GLIB_LOGGER);
-    log::set_max_level(log::LevelFilter::Debug);
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
 
     info!("TAS Log Reader version {}", config::VERSION);
 

@@ -6,11 +6,11 @@ use crate::window::Window;
 
 mod imp {
     use adw::subclass::prelude::*;
-    use glib::{clone, debug};
+    use glib::clone;
     use gtk::subclass::prelude::*;
+    use tracing::debug;
 
     use super::*;
-    use crate::G_LOG_DOMAIN;
 
     #[derive(Debug, Default)]
     pub struct Application {}

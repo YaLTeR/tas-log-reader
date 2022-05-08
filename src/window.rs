@@ -8,13 +8,12 @@ use crate::config;
 
 mod imp {
     use gettextrs::gettext;
-    use glib::warn;
     use gtk::gdk::{Key, ModifierType};
     use gtk::CompositeTemplate;
+    use tracing::warn;
 
     use super::*;
     use crate::table::Table;
-    use crate::G_LOG_DOMAIN;
 
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/rs/bxt/TasLogReader/ui/window.ui")]
