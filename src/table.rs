@@ -5,9 +5,8 @@ use gtk::{gio, glib};
 mod imp {
     use std::mem;
 
-    use gtk::gio::{self, Cancellable};
-    use gtk::CompositeTemplate;
-    use tracing::error;
+    use gtk::{gio, CompositeTemplate};
+    use tracing::{error, info_span, instrument, Instrument};
 
     use super::*;
     use crate::row::Row;
@@ -643,11 +642,17 @@ mod imp {
     impl WidgetImpl for Table {}
 
     impl Table {
-        pub fn open(&self, file: &gio::File) {
+        #[instrument(skip_all, fields(file = ?file.uri()))]
+        pub async fn open(&self, file: &gio::File) {
             self.column_view.set_model(None::<&gtk::SelectionModel>);
 
-            match file.load_contents(None::<&Cancellable>) {
+            match file
+                .load_contents_future()
+                .instrument(info_span!("load_contents"))
+                .await
+            {
                 Ok((contents, _)) => {
+                    #[instrument(skip_all)]
                     fn from_slice_lenient<'a, T: serde::Deserialize<'a>>(
                         v: &'a [u8],
                     ) -> Result<T, serde_json::Error> {
@@ -737,7 +742,7 @@ glib::wrapper! {
 }
 
 impl Table {
-    pub fn open(&self, file: &gio::File) {
-        self.imp().open(file)
+    pub async fn open(&self, file: &gio::File) {
+        self.imp().open(file).await
     }
 }

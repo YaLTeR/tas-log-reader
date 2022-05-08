@@ -3,14 +3,16 @@ use glib::clone;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
+use tracing::instrument;
 
 use crate::config;
 
 mod imp {
+    use futures_util::join;
     use gettextrs::gettext;
     use gtk::gdk::{Key, ModifierType};
     use gtk::CompositeTemplate;
-    use tracing::warn;
+    use tracing::{info_span, warn, Instrument};
 
     use super::*;
     use crate::table::Table;
@@ -85,26 +87,32 @@ mod imp {
     impl ApplicationWindowImpl for Window {}
 
     impl Window {
+        #[instrument(skip_all, fields(file = ?file.uri()))]
         pub async fn open(&self, file: &gio::File) {
-            self.table.open(file);
+            let table_open = self.table.open(file);
 
-            let info = file
-                .query_info_future(
-                    "standard::display-name",
-                    gio::FileQueryInfoFlags::NONE,
-                    glib::PRIORITY_DEFAULT,
-                )
-                .await;
+            let get_display_name = async {
+                let info = file
+                    .query_info_future(
+                        "standard::display-name",
+                        gio::FileQueryInfoFlags::NONE,
+                        glib::PRIORITY_DEFAULT,
+                    )
+                    .await;
 
-            let name = match info {
-                Ok(info) => info.display_name(),
-                Err(err) => {
-                    warn!("error retrieving file display name: {err:?}");
-                    "".into()
-                }
-            };
+                let name = match info {
+                    Ok(info) => info.display_name(),
+                    Err(err) => {
+                        warn!("error retrieving file display name: {err:?}");
+                        "".into()
+                    }
+                };
 
-            self.title.set_subtitle(&name);
+                self.title.set_subtitle(&name);
+            }
+            .instrument(info_span!("get_display_name"));
+
+            join!(table_open, get_display_name);
         }
     }
 }
