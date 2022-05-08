@@ -13,7 +13,6 @@ base_id = 'rs.bxt.TasLogReader'
 dependency('glib-2.0', version: '>= 2.66')
 dependency('gio-2.0', version: '>= 2.66')
 dependency('gtk4', version: '>= 4.6.0')
-dependency('gstreamer-1.0', version: '>= 1.10.0')
 dependency('libadwaita-1', version: '>= 1.0.0')
 
 glib_compile_schemas = find_program('glib-compile-schemas', required: true)
