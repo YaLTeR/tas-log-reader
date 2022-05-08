@@ -3,14 +3,14 @@ use std::{fmt, mem};
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
-use tracing::{info_span, warn};
+use tracing::{info_span, instrument, warn};
 
 use crate::row::{Row, RowData};
 use crate::tas_log::PhysicsFrame;
 
 mod imp {
     use gtk::{gio, CompositeTemplate};
-    use tracing::{error, instrument, Instrument};
+    use tracing::{error, Instrument};
 
     use super::*;
 
@@ -669,6 +669,7 @@ mod imp {
 }
 
 /// Deserializes a potentially-incomplete TAS log JSON and returns the `Row`s.
+#[instrument(skip_all)]
 fn deserialize_tas_log(bytes: &[u8]) -> gio::ListStore {
     use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
     use serde::Deserializer;
@@ -760,9 +761,7 @@ fn deserialize_tas_log(bytes: &[u8]) -> gio::ListStore {
     let rows = gio::ListStore::new(Row::static_type());
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
 
-    if let Err(err) = info_span!("deserialize")
-        .in_scope(|| deserializer.deserialize_map(RootObjectVisitor { rows: &rows }))
-    {
+    if let Err(err) = deserializer.deserialize_map(RootObjectVisitor { rows: &rows }) {
         warn!("error parsing TAS log: {err:?}");
     }
 
