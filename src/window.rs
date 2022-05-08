@@ -108,11 +108,14 @@ mod imp {
                     }
                 };
 
-                self.title.set_subtitle(&name);
+                name
             }
             .instrument(info_span!("get_display_name"));
 
-            join!(table_open, get_display_name);
+            let name = join!(table_open, get_display_name).1;
+
+            // Only set the name after the table is updated too.
+            self.title.set_subtitle(&name);
         }
     }
 }
