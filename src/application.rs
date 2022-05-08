@@ -32,13 +32,7 @@ mod imp {
         }
 
         fn open(&self, obj: &Self::Type, files: &[gio::File], _hint: &str) {
-            debug!(
-                "open: {:?}",
-                files
-                    .iter()
-                    .map(|x| x.uri().into())
-                    .collect::<Vec<String>>()
-            );
+            debug!(files = ?files.iter().map(|x| x.uri()).collect::<Vec<_>>(), "open");
 
             for file in files {
                 let window = obj.open_new_window();
