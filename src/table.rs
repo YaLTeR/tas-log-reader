@@ -656,8 +656,10 @@ mod imp {
             {
                 Ok((contents, _)) => {
                     let rows = deserialize_tas_log(&contents);
-                    self.column_view
-                        .set_model(Some(&gtk::MultiSelection::new(Some(&rows))));
+                    let model = gtk::MultiSelection::new(Some(&rows));
+
+                    info_span!("column_view.set_model")
+                        .in_scope(|| self.column_view.set_model(Some(&model)));
                 }
                 Err(err) => {
                     error!("error reading file: {err:?}");
