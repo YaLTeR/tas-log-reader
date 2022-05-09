@@ -9,3 +9,4 @@ Keywords=TAS;Log;HL;Half-Life;BXT;BunnymodXT;qconread2;
 # Translators: Do NOT translate or transliterate this text (this is an icon file name)!
 Icon=@icon@
 StartupNotify=true
+MimeType=text/x-log;
