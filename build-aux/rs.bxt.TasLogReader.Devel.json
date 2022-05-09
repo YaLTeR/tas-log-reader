@@ -32,7 +32,10 @@
             "buildsystem": "meson",
             "builddir": true,
             "run-tests": true,
-            "config-opts": ["-Dprofile=development"],
+            "config-opts": [
+                "--buildtype=debugoptimized",
+                "-Dprofile=development"
+            ],
             "sources": [
                 {
                     "type": "dir",
