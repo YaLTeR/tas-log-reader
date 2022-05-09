@@ -9,8 +9,9 @@ use crate::config;
 
 mod imp {
     use futures_util::join;
-    use gettextrs::gettext;
+    use gettextrs::{gettext, ngettext};
     use gtk::gdk::{Key, ModifierType};
+    use gtk::glib::closure;
     use gtk::CompositeTemplate;
     use tracing::{info_span, warn, Instrument};
 
@@ -22,6 +23,8 @@ mod imp {
     pub struct Window {
         #[template_child]
         pub title: TemplateChild<adw::WindowTitle>,
+        #[template_child]
+        pub label_frames_selected: TemplateChild<gtk::Label>,
         #[template_child]
         pub table: TemplateChild<Table>,
     }
@@ -76,6 +79,20 @@ mod imp {
             }
 
             obj.load_window_size();
+
+            self.table
+                .property_expression("frames-selected")
+                .chain_closure::<String>(closure!(
+                    |_: Option<glib::Object>, frames_selected: u32| {
+                        ngettext!(
+                            "{} fr. sel.",
+                            "{} fr. sel.",
+                            frames_selected,
+                            frames_selected
+                        )
+                    }
+                ))
+                .bind(&*self.label_frames_selected, "label", None::<&Table>);
         }
     }
 

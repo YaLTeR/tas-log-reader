@@ -47,6 +47,11 @@ template TlrWindow : ApplicationWindow {
       icon-name: "open-menu-symbolic";
       menu-model: primary_menu;
     }
+
+    [end]
+    Label label_frames_selected {
+      styles ["dim-label", "numeric", "frames-selected"]
+    }
   }
 
   .TlrTable table {}

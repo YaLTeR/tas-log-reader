@@ -9,9 +9,11 @@ use crate::row::{Row, RowData};
 use crate::tas_log::PhysicsFrame;
 
 mod imp {
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
 
+    use gtk::glib::clone;
     use gtk::{gio, CompositeTemplate};
+    use once_cell::sync::Lazy;
     use tracing::{error, Instrument};
 
     use super::*;
@@ -81,6 +83,9 @@ mod imp {
         column_remainder: TemplateChild<gtk::ColumnViewColumn>,
 
         file: RefCell<gio::File>,
+
+        frames_selected: Cell<u32>,
+        selection_changed_id: RefCell<Option<glib::SignalHandlerId>>,
     }
 
     impl Default for Table {
@@ -117,6 +122,8 @@ mod imp {
                 column_pos_y: Default::default(),
                 column_remainder: Default::default(),
                 file: RefCell::new(gio::File::for_uri("")),
+                frames_selected: Cell::new(0),
+                selection_changed_id: RefCell::new(None),
             }
         }
     }
@@ -684,6 +691,29 @@ mod imp {
                 child.unparent();
             }
         }
+
+        fn properties() -> &'static [glib::ParamSpec] {
+            static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
+                vec![glib::ParamSpecUInt::new(
+                    "frames-selected",
+                    "",
+                    "",
+                    0,
+                    u32::MAX,
+                    0,
+                    glib::ParamFlags::READABLE | glib::ParamFlags::EXPLICIT_NOTIFY,
+                )]
+            });
+
+            PROPERTIES.as_ref()
+        }
+
+        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "frames-selected" => self.frames_selected.get().to_value(),
+                _ => unimplemented!(),
+            }
+        }
     }
 
     impl WidgetImpl for Table {}
@@ -702,11 +732,28 @@ mod imp {
                     let rows = deserialize_tas_log(&contents);
                     let model = gtk::MultiSelection::new(Some(&rows));
 
+                    let obj = self.instance();
+                    let id = model.connect_selection_changed(
+                        clone!(@weak obj => move |model, position, n_items| {
+                            obj.imp().on_selection_changed(model, position, n_items);
+                        }),
+                    );
+                    if let Some(old_id) = self.selection_changed_id.replace(Some(id)) {
+                        self.column_view.model().unwrap().disconnect(old_id);
+                    }
+                    self.set_frames_selected(0);
+
                     info_span!("column_view.set_model")
                         .in_scope(|| self.column_view.set_model(Some(&model)));
                 }
                 Err(err) => {
                     error!("error reading file: {err:?}");
+
+                    if let Some(old_id) = self.selection_changed_id.replace(None) {
+                        self.column_view.model().unwrap().disconnect(old_id);
+                    }
+                    self.set_frames_selected(0);
+
                     self.column_view.set_model(None::<&gtk::SelectionModel>);
                 }
             }
@@ -716,6 +763,18 @@ mod imp {
         pub async fn open(&self, file: gio::File) {
             self.file.replace(file);
             self.reload().await;
+        }
+
+        fn set_frames_selected(&self, value: u32) {
+            if self.frames_selected.get() != value {
+                self.frames_selected.set(value);
+                self.instance().notify("frames-selected");
+            }
+        }
+
+        fn on_selection_changed(&self, model: &gtk::MultiSelection, position: u32, n_items: u32) {
+            let selection = model.selection_in_range(position, n_items);
+            self.set_frames_selected(selection.maximum() - selection.minimum() + 1);
         }
     }
 }
