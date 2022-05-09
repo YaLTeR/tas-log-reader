@@ -9,12 +9,14 @@ use crate::row::{Row, RowData};
 use crate::tas_log::PhysicsFrame;
 
 mod imp {
+    use std::cell::RefCell;
+
     use gtk::{gio, CompositeTemplate};
     use tracing::{error, Instrument};
 
     use super::*;
 
-    #[derive(Debug, Default, CompositeTemplate)]
+    #[derive(Debug, CompositeTemplate)]
     #[template(resource = "/rs/bxt/TasLogReader/ui/table.ui")]
     pub struct Table {
         #[template_child]
@@ -77,6 +79,46 @@ mod imp {
         column_pos_y: TemplateChild<gtk::ColumnViewColumn>,
         #[template_child]
         column_remainder: TemplateChild<gtk::ColumnViewColumn>,
+
+        file: RefCell<gio::File>,
+    }
+
+    impl Default for Table {
+        fn default() -> Self {
+            Self {
+                column_view: Default::default(),
+                column_frame: Default::default(),
+                column_time: Default::default(),
+                column_ms: Default::default(),
+                column_speed: Default::default(),
+                column_vel_yaw: Default::default(),
+                column_vert_speed: Default::default(),
+                column_ground: Default::default(),
+                column_duck_state: Default::default(),
+                column_ladder_state: Default::default(),
+                column_water_level: Default::default(),
+                column_jump: Default::default(),
+                column_duck: Default::default(),
+                column_forward: Default::default(),
+                column_side: Default::default(),
+                column_up: Default::default(),
+                column_yaw: Default::default(),
+                column_pitch: Default::default(),
+                column_health: Default::default(),
+                column_armor: Default::default(),
+                column_use: Default::default(),
+                column_attack_1: Default::default(),
+                column_attack_2: Default::default(),
+                column_reload: Default::default(),
+                column_client_state: Default::default(),
+                column_shared_seed: Default::default(),
+                column_pos_z: Default::default(),
+                column_pos_x: Default::default(),
+                column_pos_y: Default::default(),
+                column_remainder: Default::default(),
+                file: RefCell::new(gio::File::for_uri("")),
+            }
+        }
     }
 
     #[glib::object_subclass]
@@ -647,9 +689,11 @@ mod imp {
     impl WidgetImpl for Table {}
 
     impl Table {
-        #[instrument(skip_all, fields(file = ?file.uri()))]
-        pub async fn open(&self, file: &gio::File) {
-            match file
+        #[instrument(skip_all)]
+        pub async fn reload(&self) {
+            match self
+                .file
+                .borrow()
                 .load_contents_future()
                 .instrument(info_span!("load_contents"))
                 .await
@@ -666,6 +710,12 @@ mod imp {
                     self.column_view.set_model(None::<&gtk::SelectionModel>);
                 }
             }
+        }
+
+        #[instrument(skip_all, fields(file = ?file.uri()))]
+        pub async fn open(&self, file: gio::File) {
+            self.file.replace(file);
+            self.reload().await;
         }
     }
 }
@@ -814,7 +864,11 @@ glib::wrapper! {
 }
 
 impl Table {
-    pub async fn open(&self, file: &gio::File) {
+    pub async fn open(&self, file: gio::File) {
         self.imp().open(file).await
+    }
+
+    pub async fn reload(&self) {
+        self.imp().reload().await
     }
 }

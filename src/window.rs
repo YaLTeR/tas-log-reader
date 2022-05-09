@@ -39,6 +39,13 @@ mod imp {
             klass.install_action("win.open", None, |obj, _, _| obj.on_open_clicked());
             klass.add_binding_action(Key::o, ModifierType::CONTROL_MASK, "win.open", None);
 
+            klass.install_action("win.reload", None, |obj, _, _| {
+                glib::MainContext::default().spawn_local(clone!(@weak obj => async move {
+                    obj.imp().table.reload().await;
+                }));
+            });
+            klass.add_binding_action(Key::r, ModifierType::CONTROL_MASK, "win.reload", None);
+
             klass.install_action("win.about", None, |window, _, _| {
                 gtk::AboutDialog::builder()
                     .transient_for(window)
@@ -89,7 +96,7 @@ mod imp {
     impl Window {
         #[instrument(skip_all, fields(file = ?file.uri()))]
         pub async fn open(&self, file: &gio::File) {
-            let table_open = self.table.open(file);
+            let table_open = self.table.open(file.clone());
 
             let get_display_name = async {
                 let info = file
