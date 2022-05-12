@@ -9,7 +9,7 @@ use crate::config;
 
 mod imp {
     use futures_util::join;
-    use gettextrs::{gettext, ngettext};
+    use gettextrs::ngettext;
     use gtk::glib::closure;
     use gtk::CompositeTemplate;
     use tracing::{info_span, warn, Instrument};
@@ -39,21 +39,7 @@ mod imp {
 
             klass.install_action("win.open", None, |obj, _, _| obj.show_open_dialog());
             klass.install_action("win.reload", None, |obj, _, _| obj.reload());
-
-            klass.install_action("win.about", None, |window, _, _| {
-                gtk::AboutDialog::builder()
-                    .transient_for(window)
-                    .modal(true)
-                    .logo_icon_name(config::APP_ID)
-                    .version(config::VERSION)
-                    .license_type(gtk::License::Gpl30)
-                    .authors(vec!["Ivan Molodetskikh".to_owned()])
-                    .website("https://github.com/YaLTeR/tas-log-reader")
-                    // Translators: shown in the About dialog, put your name here.
-                    .translator_credits(&gettext("translator-credits"))
-                    .build()
-                    .show();
-            });
+            klass.install_action("win.about", None, |obj, _, _| obj.show_about_dialog());
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -186,6 +172,21 @@ impl Window {
                 obj.imp().open(&file).await;
             }
         }));
+    }
+
+    fn show_about_dialog(&self) {
+        gtk::AboutDialog::builder()
+            .transient_for(self)
+            .modal(true)
+            .logo_icon_name(config::APP_ID)
+            .version(config::VERSION)
+            .license_type(gtk::License::Gpl30)
+            .authors(vec!["Ivan Molodetskikh".to_owned()])
+            .website("https://github.com/YaLTeR/tas-log-reader")
+            // Translators: shown in the About dialog, put your name here.
+            .translator_credits(&gettext("translator-credits"))
+            .build()
+            .show();
     }
 
     fn save_window_size(&self) -> Result<(), glib::BoolError> {
