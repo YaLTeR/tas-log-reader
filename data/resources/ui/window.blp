@@ -35,7 +35,7 @@ template TlrWindow : ApplicationWindow {
         use-underline: true;
       };
 
-      clicked => on_open_clicked() swapped;
+      action-name: "win.open";
     }
 
     title-widget: Adw.WindowTitle title {

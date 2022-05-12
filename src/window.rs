@@ -36,9 +36,8 @@ mod imp {
 
         fn class_init(klass: &mut Self::Class) {
             Self::bind_template(klass);
-            Self::Type::bind_template_callbacks(klass);
 
-            klass.install_action("win.open", None, |obj, _, _| obj.on_open_clicked());
+            klass.install_action("win.open", None, |obj, _, _| obj.show_open_dialog());
             klass.install_action("win.reload", None, |obj, _, _| obj.reload());
 
             klass.install_action("win.about", None, |window, _, _| {
@@ -142,7 +141,6 @@ glib::wrapper! {
         @implements gio::ActionMap, gio::ActionGroup;
 }
 
-#[gtk::template_callbacks]
 impl Window {
     pub fn new(app: &impl IsA<gtk::Application>) -> Self {
         glib::Object::new(&[("application", app)]).unwrap()
@@ -160,8 +158,7 @@ impl Window {
         }));
     }
 
-    #[template_callback]
-    fn on_open_clicked(&self) {
+    fn show_open_dialog(&self) {
         let file_chooser = gtk::FileChooserNative::builder()
             .transient_for(self)
             .modal(true)
