@@ -10,7 +10,6 @@ use crate::config;
 mod imp {
     use futures_util::join;
     use gettextrs::{gettext, ngettext};
-    use gtk::gdk::{Key, ModifierType};
     use gtk::glib::closure;
     use gtk::CompositeTemplate;
     use tracing::{info_span, warn, Instrument};
@@ -40,14 +39,12 @@ mod imp {
             Self::Type::bind_template_callbacks(klass);
 
             klass.install_action("win.open", None, |obj, _, _| obj.on_open_clicked());
-            klass.add_binding_action(Key::o, ModifierType::CONTROL_MASK, "win.open", None);
 
             klass.install_action("win.reload", None, |obj, _, _| {
                 glib::MainContext::default().spawn_local(clone!(@weak obj => async move {
                     obj.imp().table.reload().await;
                 }));
             });
-            klass.add_binding_action(Key::r, ModifierType::CONTROL_MASK, "win.reload", None);
 
             klass.install_action("win.about", None, |window, _, _| {
                 gtk::AboutDialog::builder()

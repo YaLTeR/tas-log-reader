@@ -54,6 +54,9 @@ mod imp {
             action.connect_activate(clone!(@weak obj => move |_, _| { obj.open_new_window(); }));
             obj.add_action(&action);
             obj.set_accels_for_action("app.new-window", &["<primary>n"]);
+
+            obj.set_accels_for_action("win.open", &["<primary>o"]);
+            obj.set_accels_for_action("win.reload", &["<primary>r"]);
         }
     }
 
