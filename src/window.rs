@@ -39,12 +39,7 @@ mod imp {
             Self::Type::bind_template_callbacks(klass);
 
             klass.install_action("win.open", None, |obj, _, _| obj.on_open_clicked());
-
-            klass.install_action("win.reload", None, |obj, _, _| {
-                glib::MainContext::default().spawn_local(clone!(@weak obj => async move {
-                    obj.imp().table.reload().await;
-                }));
-            });
+            klass.install_action("win.reload", None, |obj, _, _| obj.reload());
 
             klass.install_action("win.about", None, |window, _, _| {
                 gtk::AboutDialog::builder()
@@ -156,6 +151,12 @@ impl Window {
     pub fn open(&self, file: gio::File) {
         glib::MainContext::default().spawn_local(clone!(@weak self as obj => async move {
             obj.imp().open(&file).await;
+        }));
+    }
+
+    fn reload(&self) {
+        glib::MainContext::default().spawn_local(clone!(@weak self as obj => async move {
+            obj.imp().table.reload().await;
         }));
     }
 
