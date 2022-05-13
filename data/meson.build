@@ -53,14 +53,10 @@ if appstream_util.found()
 endif
 
 # GSchema
-gschema_conf = configuration_data()
-gschema_conf.set('app-id', application_id)
-configure_file(
-  input: '@0@.gschema.xml.in'.format(base_id),
-  output: '@0@.gschema.xml'.format(application_id),
-  configuration: gschema_conf,
-  install: true,
-  install_dir: datadir / 'glib-2.0' / 'schemas'
+gnome.compile_schemas()
+install_data(
+  '@0@.gschema.xml'.format(base_id),
+  install_dir: datadir / 'glib-2.0' / 'schemas',
 )
 
 # Validata GSchema

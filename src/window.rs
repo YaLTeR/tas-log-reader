@@ -192,7 +192,7 @@ impl Window {
     fn save_window_size(&self) -> Result<(), glib::BoolError> {
         let (width, height) = self.default_size();
 
-        let settings = gio::Settings::new(config::APP_ID);
+        let settings = gio::Settings::new("rs.bxt.TasLogReader");
         settings.set_int("window-width", width)?;
         settings.set_int("window-height", height)?;
         settings.set_boolean("is-maximized", self.is_maximized())?;
@@ -201,7 +201,7 @@ impl Window {
     }
 
     fn load_window_size(&self) {
-        let settings = gio::Settings::new(config::APP_ID);
+        let settings = gio::Settings::new("rs.bxt.TasLogReader");
         let width = settings.int("window-width");
         let height = settings.int("window-height");
         let is_maximized = settings.boolean("is-maximized");
