@@ -31,6 +31,6 @@
   </kudos>
   <developer_name>Ivan Molodetskikh</developer_name>
   <update_contact>yalterz@gmail.com</update_contact>
-  <translation type="gettext">@gettext-package@</translation>
+  <translation type="gettext">tas-log-reader</translation>
   <launchable type="desktop-id">@app-id@.desktop</launchable>
 </component>

@@ -20,13 +20,13 @@ fn main() {
     info!("TAS Log Reader version {}", config::VERSION);
 
     setlocale(LocaleCategory::LcAll, "");
-    if let Err(err) = bindtextdomain(config::GETTEXT_PACKAGE, config::LOCALEDIR) {
+    if let Err(err) = bindtextdomain("tas-log-reader", config::LOCALEDIR) {
         warn!("Error in bindtextdomain(): {}", err);
     }
-    if let Err(err) = bind_textdomain_codeset(config::GETTEXT_PACKAGE, "UTF-8") {
+    if let Err(err) = bind_textdomain_codeset("tas-log-reader", "UTF-8") {
         warn!("Error in bind_textdomain_codeset(): {}", err);
     }
-    if let Err(err) = textdomain(config::GETTEXT_PACKAGE) {
+    if let Err(err) = textdomain("tas-log-reader") {
         warn!("Error in textdomain(): {}", err);
     }
 
