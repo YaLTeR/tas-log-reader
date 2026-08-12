@@ -48,8 +48,9 @@ mod imp {
     }
 
     impl ObjectImpl for Window {
-        fn constructed(&self, obj: &Self::Type) {
-            self.parent_constructed(obj);
+        fn constructed(&self) {
+            let obj = self.obj();
+            self.parent_constructed();
 
             if config::PROFILE == "Devel" {
                 obj.add_css_class("devel");
@@ -76,12 +77,12 @@ mod imp {
     impl WidgetImpl for Window {}
 
     impl WindowImpl for Window {
-        fn close_request(&self, window: &Self::Type) -> gtk::Inhibit {
-            if let Err(err) = window.save_window_size() {
+        fn close_request(&self) -> glib::Propagation {
+            if let Err(err) = self.obj().save_window_size() {
                 warn!("failed to save window state: {err:?}");
             }
 
-            self.parent_close_request(window)
+            self.parent_close_request()
         }
     }
 
@@ -97,7 +98,7 @@ mod imp {
                     .query_info_future(
                         "standard::display-name",
                         gio::FileQueryInfoFlags::NONE,
-                        glib::PRIORITY_DEFAULT,
+                        glib::Priority::default(),
                     )
                     .await;
 
@@ -123,25 +124,34 @@ mod imp {
 
 glib::wrapper! {
     pub struct Window(ObjectSubclass<imp::Window>)
-        @extends gtk::Widget, gtk::Window, gtk::ApplicationWindow,
-        @implements gio::ActionMap, gio::ActionGroup;
+        @extends gtk::ApplicationWindow, gtk::Window, gtk::Widget,
+        @implements gtk::Buildable, gtk::ConstraintTarget,
+            gtk::Native, gtk::Root, gtk::ShortcutManager, gio::ActionGroup, gio::ActionMap;
 }
 
 impl Window {
     pub fn new(app: &impl IsA<gtk::Application>) -> Self {
-        glib::Object::new(&[("application", app)]).unwrap()
+        glib::Object::builder().property("application", app).build()
     }
 
     pub fn open(&self, file: gio::File) {
-        glib::MainContext::default().spawn_local(clone!(@weak self as obj => async move {
-            obj.imp().open(&file).await;
-        }));
+        glib::MainContext::default().spawn_local(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                obj.imp().open(&file).await;
+            }
+        ));
     }
 
     fn reload(&self) {
-        glib::MainContext::default().spawn_local(clone!(@weak self as obj => async move {
-            obj.imp().table.reload().await;
-        }));
+        glib::MainContext::default().spawn_local(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                obj.imp().table.reload().await;
+            }
+        ));
     }
 
     fn show_open_dialog(&self) {
@@ -150,7 +160,7 @@ impl Window {
             .modal(true)
             .action(gtk::FileChooserAction::Open)
             // Translators: file chooser dialog title.
-            .title(&gettext("Open TAS log"))
+            .title(gettext("Open TAS log"))
             .build();
 
         let filter = gtk::FileFilter::new();
@@ -163,15 +173,19 @@ impl Window {
         filter.add_pattern("*");
         file_chooser.add_filter(&filter);
 
-        glib::MainContext::default().spawn_local(clone!(@weak self as obj => async move {
-            if file_chooser.run_future().await != gtk::ResponseType::Accept {
-                return;
-            }
+        glib::MainContext::default().spawn_local(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                if file_chooser.run_future().await != gtk::ResponseType::Accept {
+                    return;
+                }
 
-            if let Some(file) = file_chooser.file() {
-                obj.imp().open(&file).await;
+                if let Some(file) = file_chooser.file() {
+                    obj.imp().open(&file).await;
+                }
             }
-        }));
+        ));
     }
 
     fn show_about_dialog(&self) {
@@ -184,7 +198,7 @@ impl Window {
             .authors(vec!["Ivan Molodetskikh".to_owned()])
             .website("https://github.com/YaLTeR/tas-log-reader")
             // Translators: shown in the About dialog, put your name here.
-            .translator_credits(&gettext("translator-credits"))
+            .translator_credits(gettext("translator-credits"))
             .build()
             .show();
     }

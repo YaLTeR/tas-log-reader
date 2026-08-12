@@ -144,8 +144,8 @@ mod imp {
     }
 
     impl ObjectImpl for Table {
-        fn constructed(&self, obj: &Self::Type) {
-            self.parent_constructed(obj);
+        fn constructed(&self) {
+            self.parent_constructed();
 
             const MAKE_LABEL: fn() -> gtk::Label = || {
                 let label = gtk::Label::new(None);
@@ -686,7 +686,8 @@ mod imp {
             )));
         }
 
-        fn dispose(&self, obj: &Self::Type) {
+        fn dispose(&self) {
+            let obj = self.obj();
             while let Some(child) = obj.first_child() {
                 child.unparent();
             }
@@ -694,21 +695,16 @@ mod imp {
 
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: Lazy<Vec<glib::ParamSpec>> = Lazy::new(|| {
-                vec![glib::ParamSpecUInt::new(
-                    "frames-selected",
-                    "",
-                    "",
-                    0,
-                    u32::MAX,
-                    0,
-                    glib::ParamFlags::READABLE | glib::ParamFlags::EXPLICIT_NOTIFY,
-                )]
+                vec![glib::ParamSpecUInt::builder("frames-selected")
+                    .read_only()
+                    .explicit_notify()
+                    .build()]
             });
 
             PROPERTIES.as_ref()
         }
 
-        fn property(&self, _obj: &Self::Type, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             match pspec.name() {
                 "frames-selected" => self.frames_selected.get().to_value(),
                 _ => unimplemented!(),
@@ -730,14 +726,16 @@ mod imp {
             {
                 Ok((contents, _)) => {
                     let rows = deserialize_tas_log(&contents);
-                    let model = gtk::MultiSelection::new(Some(&rows));
+                    let model = gtk::MultiSelection::new(Some(rows));
 
-                    let obj = self.instance();
-                    let id = model.connect_selection_changed(
-                        clone!(@weak obj => move |model, position, n_items| {
+                    let obj = self.obj();
+                    let id = model.connect_selection_changed(clone!(
+                        #[weak]
+                        obj,
+                        move |model, position, n_items| {
                             obj.imp().on_selection_changed(model, position, n_items);
-                        }),
-                    );
+                        }
+                    ));
                     if let Some(old_id) = self.selection_changed_id.replace(Some(id)) {
                         self.column_view.model().unwrap().disconnect(old_id);
                     }
@@ -768,7 +766,7 @@ mod imp {
         fn set_frames_selected(&self, value: u32) {
             if self.frames_selected.get() != value {
                 self.frames_selected.set(value);
-                self.instance().notify("frames-selected");
+                self.obj().notify("frames-selected");
             }
         }
 
@@ -869,7 +867,7 @@ fn deserialize_tas_log(bytes: &[u8]) -> gio::ListStore {
         }
     }
 
-    let rows = gio::ListStore::new(Row::static_type());
+    let rows = gio::ListStore::new::<Row>();
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
 
     if let Err(err) = deserializer.deserialize_map(RootObjectVisitor { rows: &rows }) {
@@ -884,8 +882,8 @@ fn make_factory<Widget, T>(
     bind: impl Fn(Widget, T) + 'static,
 ) -> gtk::SignalListItemFactory
 where
-    Widget: glib::IsA<gtk::Widget>,
-    T: glib::IsA<glib::Object>,
+    Widget: IsA<gtk::Widget>,
+    T: IsA<glib::Object>,
 {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(move |_factory, item| {
@@ -906,8 +904,8 @@ fn make_factory_unbind<Widget, T>(
     unbind: impl Fn(Widget) + 'static,
 ) -> gtk::SignalListItemFactory
 where
-    Widget: glib::IsA<gtk::Widget>,
-    T: glib::IsA<glib::Object>,
+    Widget: IsA<gtk::Widget>,
+    T: IsA<glib::Object>,
 {
     let factory = make_factory(setup, bind);
     factory.connect_unbind(move |_factory, item| {
@@ -919,7 +917,8 @@ where
 
 glib::wrapper! {
     pub struct Table(ObjectSubclass<imp::Table>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl Table {

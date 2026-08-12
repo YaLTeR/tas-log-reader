@@ -6,6 +6,8 @@ mod table;
 mod tas_log;
 mod window;
 
+use std::env;
+
 use application::Application;
 use gettextrs::*;
 use gtk::prelude::*;

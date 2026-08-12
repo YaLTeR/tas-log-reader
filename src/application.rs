@@ -7,7 +7,6 @@ use crate::window::Window;
 mod imp {
     use adw::subclass::prelude::*;
     use glib::clone;
-    use gtk::subclass::prelude::*;
     use tracing::debug;
 
     use super::*;
@@ -25,14 +24,16 @@ mod imp {
     impl ObjectImpl for Application {}
 
     impl ApplicationImpl for Application {
-        fn activate(&self, obj: &Self::Type) {
+        fn activate(&self) {
             debug!("activate");
-            self.parent_activate(obj);
+            let obj = self.obj();
+            self.parent_activate();
             obj.open_new_window();
         }
 
-        fn open(&self, obj: &Self::Type, files: &[gio::File], _hint: &str) {
+        fn open(&self, files: &[gio::File], _hint: &str) {
             debug!(files = ?files.iter().map(|x| x.uri()).collect::<Vec<_>>(), "open");
+            let obj = self.obj();
 
             for file in files {
                 let window = obj.open_new_window();
@@ -40,17 +41,28 @@ mod imp {
             }
         }
 
-        fn startup(&self, obj: &Self::Type) {
+        fn startup(&self) {
             debug!("startup");
+            let obj = self.obj();
 
-            self.parent_startup(obj);
+            self.parent_startup();
 
             let action = gio::SimpleAction::new("quit", None);
-            action.connect_activate(clone!(@weak obj => move |_, _| obj.quit()));
+            action.connect_activate(clone!(
+                #[weak]
+                obj,
+                move |_, _| obj.quit()
+            ));
             obj.add_action(&action);
 
             let action = gio::SimpleAction::new("new-window", None);
-            action.connect_activate(clone!(@weak obj => move |_, _| { obj.open_new_window(); }));
+            action.connect_activate(clone!(
+                #[weak]
+                obj,
+                move |_, _| {
+                    obj.open_new_window();
+                }
+            ));
             obj.add_action(&action);
 
             obj.set_accels_for_action("app.quit", &["<primary>q"]);
@@ -72,12 +84,11 @@ glib::wrapper! {
 
 impl Application {
     pub fn new() -> Self {
-        glib::Object::new(&[
-            ("application-id", &config::APP_ID),
-            ("flags", &gio::ApplicationFlags::HANDLES_OPEN),
-            ("resource-base-path", &"/rs/bxt/TasLogReader/"),
-        ])
-        .unwrap()
+        glib::Object::builder()
+            .property("application-id", config::APP_ID)
+            .property("flags", gio::ApplicationFlags::HANDLES_OPEN)
+            .property("resource-base-path", "/rs/bxt/TasLogReader/")
+            .build()
     }
 
     pub fn create_new_window(&self) -> Window {

@@ -35,7 +35,7 @@ glib::wrapper! {
 
 impl Row {
     pub fn new(data: RowData) -> Self {
-        let obj: Self = glib::Object::new(&[]).unwrap();
+        let obj: Self = glib::Object::new();
         obj.imp().data.set(data).unwrap();
         obj
     }
