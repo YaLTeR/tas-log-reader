@@ -38,7 +38,21 @@ fn main() {
         config::NAME_SUFFIX
     ));
 
-    let res = gio::Resource::load(config::RESOURCES_FILE).expect("Could not load gresource file");
+    let res = match env::var("MESON_DEVENV") {
+        Err(_) => {
+            gio::Resource::load(config::RESOURCES_FILE).expect("could not load the gresource file")
+        }
+        Ok(_) => {
+            let mut resource_path = env::current_exe().expect("unable to get executable path");
+            resource_path.pop();
+            resource_path.pop();
+            resource_path.push("data");
+            resource_path.push("resources");
+            resource_path.push("resources.gresource");
+            gio::Resource::load(&resource_path)
+                .expect("unable to load resources.gresource from build dir")
+        }
+    };
     gio::resources_register(&res);
 
     Application::new().run();
