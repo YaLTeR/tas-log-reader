@@ -1,0 +1,20 @@
+.{
+    .name = .tas_log_reader,
+    .version = "0.0.0",
+    .fingerprint = 0x73c08e4c38eddbcc,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .translate_c = .{
+            .url = "git+https://codeberg.org/vancluever/translate-c?ref=vancluever-0.16.x#80f8b6e4f45a303268717d8e5f4f91d7837138bb",
+            .hash = "translate_c-0.0.0-Q_BUWmU6BwB_9JKG2l2W7i_mhmYWeRseTGBEHi_YlV5f",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        // For example...
+        //"LICENSE",
+        //"README.md",
+    },
+}
