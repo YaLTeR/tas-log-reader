@@ -1,0 +1,79 @@
+const std = @import("std");
+const c = @import("c");
+
+pub const Types = struct {
+    pub var GFile: c.GType = undefined;
+    pub var GtkApplication: c.GType = undefined;
+    pub var GtkApplicationWindow: c.GType = undefined;
+    pub var GtkWidget: c.GType = undefined;
+
+    pub fn fetch() void {
+        GFile = c.g_file_get_type();
+        GtkApplication = c.gtk_application_get_type();
+        GtkApplicationWindow = c.gtk_application_window_get_type();
+        GtkWidget = c.gtk_widget_get_type();
+    }
+};
+
+pub fn connect(
+    instance: *anyopaque,
+    signal: [*:0]const u8,
+    comptime handler: anytype,
+    data: c.gpointer,
+) c.gulong {
+    const conv = @typeInfo(@TypeOf(handler)).@"fn".calling_convention;
+    comptime if (!std.builtin.CallingConvention.eql(conv, .c)) {
+        @compileError("handler must have c calling convention, got: " ++ @tagName(conv));
+    };
+
+    return c.g_signal_connect_data(
+        instance,
+        signal,
+        @ptrCast(&handler),
+        data,
+        null,
+        c.G_CONNECT_DEFAULT,
+    );
+}
+
+pub fn clear_object(object: *?*c.GObject) void {
+    if (object.*) |obj| {
+        c.g_object_unref(obj);
+        object.* = null;
+    }
+}
+
+pub fn type_register_static_simple(
+    parent: c.GType,
+    name: [*:0]const u8,
+    Class: type,
+    class_init_fn: fn (class: *Class) void,
+    Instance: type,
+    instance_init_fn: fn (instance: *Instance) void,
+) c.GType {
+    const Thunks = struct {
+        fn class_init(class: c.gpointer, class_data: c.gpointer) callconv(.c) void {
+            _ = &class_data;
+
+            const cl: *Class = @ptrCast(@alignCast(class));
+            class_init_fn(cl);
+        }
+
+        fn instance_init(instance: ?*c.GTypeInstance, g_class: c.gpointer) callconv(.c) void {
+            _ = &g_class;
+
+            const self: *Instance = @ptrCast(instance);
+            instance_init_fn(self);
+        }
+    };
+
+    return c.g_type_register_static_simple(
+        parent,
+        name,
+        @sizeOf(Class),
+        &Thunks.class_init,
+        @sizeOf(Instance),
+        &Thunks.instance_init,
+        c.G_TYPE_FLAG_NONE,
+    );
+}

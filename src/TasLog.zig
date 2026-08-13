@@ -82,7 +82,7 @@ pub const CommandFrame = struct {
     ap: ?f32 = null,
     efric: f32 = 1,
     egrav: f32 = 1,
-    pview: [3]f32 = .{0, 0, 0},
+    pview: [3]f32 = .{ 0, 0, 0 },
     prepm: ?PmState = null,
     postpm: ?PmState = null,
 };
@@ -92,7 +92,7 @@ pub const PmState = struct {
     vel: [3]f32,
     og: bool,
     ol: bool = false,
-    bvel: [3]f32 = .{0, 0, 0},
+    bvel: [3]f32 = .{ 0, 0, 0 },
     wlvl: i32 = 0,
     dst: u8 = 0,
 };
