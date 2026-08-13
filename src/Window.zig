@@ -75,10 +75,9 @@ pub const TlrWindow = extern struct {
     fn dispose(object: ?*c.GObject) callconv(.c) void {
         const self: *Self = @ptrCast(object.?);
 
-        g.clear_object(@ptrCast(&self.file));
+        g.clear_object(&self.file);
 
-        const object_class: *c.GObjectClass = @ptrCast(Class.parent_class);
-        object_class.dispose.?(object);
+        g.upcast(c.GObjectClass, Class.parent_class).dispose.?(object);
     }
 
     fn set_property(object: ?*c.GObject, property_id: c.guint, value: ?*const c.GValue, pspec: ?*c.GParamSpec) callconv(.c) void {

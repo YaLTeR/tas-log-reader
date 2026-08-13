@@ -60,8 +60,7 @@ pub const TlrApplication = extern struct {
         const zone = Tracy.zone(@src());
         defer zone.end();
 
-        const application_class: *c.GApplicationClass = @ptrCast(Class.parent_class);
-        application_class.startup.?(app);
+        g.upcast(c.GApplicationClass, Class.parent_class).startup.?(app);
     }
 
     fn activate(app: ?*c.GApplication) callconv(.c) void {

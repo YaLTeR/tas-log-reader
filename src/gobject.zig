@@ -15,6 +15,32 @@ pub const Types = struct {
     }
 };
 
+pub inline fn isA(comptime derived: type, comptime parent: type) ?bool {
+    if (derived == parent) return true;
+
+    const info = switch (@typeInfo(derived)) {
+        .@"struct" => |info| info,
+        .@"opaque" => return null, // We can't tell.
+        else => return false,
+    };
+    if (info.layout != .@"extern") return false;
+    if (info.fields.len == 0) return false;
+
+    const first = info.fields[0].type;
+    return isA(first, parent);
+}
+
+pub inline fn upcast(comptime T: type, ptr: anytype) *T {
+    comptime {
+        const pointee = @typeInfo(@TypeOf(ptr)).pointer.child;
+        if (isA(pointee, T) != true) {
+            @compileError("ptr must be derived from " ++ @typeName(T) ++ ", got " ++ @typeName(pointee));
+        }
+    }
+
+    return @ptrCast(ptr);
+}
+
 pub fn connect(
     instance: *anyopaque,
     signal: [*:0]const u8,
@@ -36,7 +62,16 @@ pub fn connect(
     );
 }
 
-pub inline fn clear_object(object: *?*c.GObject) void {
+pub inline fn clear_object(object: anytype) void {
+    comptime {
+        const firstChild = @typeInfo(@TypeOf(object)).pointer.child;
+        const secondPointer = @typeInfo(firstChild).optional.child;
+        const objectType = @typeInfo(secondPointer).pointer.child;
+        if (isA(objectType, c.GObject) == false) {
+            @compileError("object must be *?*c.GObject, got: " ++ @typeName(@TypeOf(object)));
+        }
+    }
+
     if (object.*) |obj| {
         const o = obj;
         object.* = null;
