@@ -36,11 +36,24 @@ pub fn connect(
     );
 }
 
-pub fn clear_object(object: *?*c.GObject) void {
+pub inline fn clear_object(object: *?*c.GObject) void {
     if (object.*) |obj| {
-        c.g_object_unref(obj);
+        const o = obj;
         object.* = null;
+        c.g_object_unref(o);
     }
+}
+
+pub inline fn set_object(object: *?*c.GObject, new_object: ?*c.GObject) bool {
+    // Same order of operations as g_set_object().
+    const old = object.*;
+    if (old == new_object) return false;
+
+    if (new_object) |obj| _ = c.g_object_ref(obj);
+    object.* = new_object;
+    if (old) |obj| c.g_object_unref(obj);
+
+    return true;
 }
 
 pub fn type_register_static_simple(

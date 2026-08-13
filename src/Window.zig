@@ -16,6 +16,10 @@ pub const TlrWindow = extern struct {
     const Prop = enum(c.guint) { file = 1, N };
     var properties = [_]?*c.GParamSpec{null} ** @intFromEnum(Prop.N);
 
+    inline fn pSpec(comptime p: Prop) *?*c.GParamSpec {
+        return &properties[@intFromEnum(p)];
+    }
+
     pub fn register() void {
         gType = g.type_register_static_simple(
             g.Types.GtkApplicationWindow,
@@ -49,14 +53,18 @@ pub const TlrWindow = extern struct {
         const zone = Tracy.zone(@src());
         defer zone.end();
 
-        if (c.g_set_object(@ptrCast(&self.file), @ptrCast(@alignCast(file))) == 0)
-            return;
+        if (!g.set_object(@ptrCast(&self.file), @ptrCast(@alignCast(file)))) return;
 
-        const path = @as(?[*:0]u8, c.g_file_get_path(self.file)) orelse return;
-        defer c.g_free(path);
+        c.g_object_notify_by_pspec(@ptrCast(self), pSpec(Prop.file).*);
 
         const label = c.gtk_window_get_child(@ptrCast(self));
-        c.gtk_label_set_label(@ptrCast(label), path);
+
+        if (@as(?[*:0]u8, c.g_file_get_path(self.file))) |path| {
+            c.gtk_label_set_label(@ptrCast(label), path);
+            c.g_free(path);
+        } else {
+            c.gtk_label_set_label(@ptrCast(label), "No file");
+        }
     }
 
     fn init(self: *Self) void {
@@ -107,12 +115,12 @@ pub const TlrWindow = extern struct {
             object_class.set_property = Self.set_property;
             object_class.get_property = Self.get_property;
 
-            properties[@intFromEnum(Prop.file)] = c.g_param_spec_object(
+            pSpec(Prop.file).* = c.g_param_spec_object(
                 "file",
                 "",
                 "",
                 g.Types.GFile,
-                c.G_PARAM_READWRITE | c.G_PARAM_CONSTRUCT | c.G_PARAM_STATIC_STRINGS,
+                c.G_PARAM_READWRITE | c.G_PARAM_CONSTRUCT | c.G_PARAM_EXPLICIT_NOTIFY | c.G_PARAM_STATIC_STRINGS,
             );
 
             c.g_object_class_install_properties(object_class, @intFromEnum(Prop.N), &properties);
