@@ -11,7 +11,7 @@ pub const TlrWindow = extern struct {
     file: ?*c.GFile,
 
     pub const Self = @This();
-    pub var gType: c.GType = undefined;
+    pub var g_type: c.GType = undefined;
 
     const Prop = enum(c.guint) { file = 1, N };
     var properties = [_]?*c.GParamSpec{null} ** @intFromEnum(Prop.N);
@@ -21,7 +21,7 @@ pub const TlrWindow = extern struct {
     }
 
     pub fn register() void {
-        gType = g.type_register_static_simple(
+        g_type = g.type_register_static_simple(
             g.Types.GtkApplicationWindow,
             "TlrWindow",
             Class,
@@ -31,9 +31,13 @@ pub const TlrWindow = extern struct {
         );
     }
 
+    inline fn downcast(object: anytype) *Self {
+        return g.downcast(object, Self, g_type);
+    }
+
     pub fn new(app: *TlrApplication, file: ?*c.GFile) *Self {
         return @ptrCast(@alignCast(c.g_object_new(
-            Self.gType,
+            Self.g_type,
             "application",
             app,
             "file",
@@ -73,7 +77,7 @@ pub const TlrWindow = extern struct {
     }
 
     fn dispose(object: ?*c.GObject) callconv(.c) void {
-        const self: *Self = @ptrCast(object.?);
+        const self = downcast(object.?);
 
         g.clear_object(&self.file);
 
@@ -83,7 +87,7 @@ pub const TlrWindow = extern struct {
     fn set_property(object: ?*c.GObject, property_id: c.guint, value: ?*const c.GValue, pspec: ?*c.GParamSpec) callconv(.c) void {
         _ = pspec;
 
-        const self: *Self = @ptrCast(object.?);
+        const self = downcast(object.?);
         switch (property_id) {
             @intFromEnum(Prop.file) => self.setFile(@ptrCast(@alignCast(c.g_value_get_object(value)))),
             else => unreachable,
@@ -93,7 +97,7 @@ pub const TlrWindow = extern struct {
     fn get_property(object: ?*c.GObject, property_id: c.guint, value: ?*c.GValue, pspec: ?*c.GParamSpec) callconv(.c) void {
         _ = pspec;
 
-        const self: *Self = @ptrCast(object.?);
+        const self = downcast(object.?);
         switch (property_id) {
             @intFromEnum(Prop.file) => c.g_value_set_object(value, self.file),
             else => unreachable,
@@ -109,7 +113,7 @@ pub const TlrWindow = extern struct {
         fn init(class: *Class) void {
             parent_class = @ptrCast(@alignCast(c.g_type_class_peek_parent(class)));
 
-            const object_class: *c.GObjectClass = @ptrCast(class);
+            const object_class = g.upcast(c.GObjectClass, class);
             object_class.dispose = Self.dispose;
             object_class.set_property = Self.set_property;
             object_class.get_property = Self.get_property;

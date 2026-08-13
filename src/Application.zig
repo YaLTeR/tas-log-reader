@@ -9,10 +9,10 @@ pub const TlrApplication = extern struct {
     parent: c.GtkApplication,
 
     pub const Self = @This();
-    pub var gType: c.GType = undefined;
+    pub var g_type: c.GType = undefined;
 
     pub fn register() void {
-        gType = g.type_register_static_simple(
+        g_type = g.type_register_static_simple(
             g.Types.GtkApplication,
             "TlrApplication",
             Class,
@@ -22,9 +22,13 @@ pub const TlrApplication = extern struct {
         );
     }
 
+    inline fn downcast(object: anytype) *Self {
+        return g.downcast(object, Self, g_type);
+    }
+
     pub fn new() *Self {
         return @ptrCast(@alignCast(c.g_object_new(
-            Self.gType,
+            Self.g_type,
             "application-id",
             "rs.bxt.TasLogReader",
             "flags",
@@ -67,7 +71,7 @@ pub const TlrApplication = extern struct {
         const zone = Tracy.zone(@src());
         defer zone.end();
 
-        const self: *Self = @ptrCast(app);
+        const self = downcast(app.?);
         std.log.debug("activate", .{});
 
         const window = self.createNewWindow(null);
@@ -78,7 +82,7 @@ pub const TlrApplication = extern struct {
         const zone = Tracy.zone(@src());
         defer zone.end();
 
-        const self: *Self = @ptrCast(app);
+        const self = downcast(app.?);
         _ = hint;
         std.log.debug("open", .{});
 
@@ -102,7 +106,7 @@ pub const TlrApplication = extern struct {
         fn init(class: *Class) void {
             parent_class = @ptrCast(@alignCast(c.g_type_class_peek_parent(class)));
 
-            const application_class: *c.GApplicationClass = @ptrCast(class);
+            const application_class = g.upcast(c.GApplicationClass, class);
             application_class.startup = Self.startup;
             application_class.activate = Self.activate;
             application_class.open = Self.open;

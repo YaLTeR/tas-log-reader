@@ -1,7 +1,13 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Io = std.Io;
 const c = @import("c");
 const g = @import("gobject.zig");
+
+pub const checks = switch (builtin.mode) {
+    .Debug, .ReleaseSafe => true,
+    .ReleaseSmall, .ReleaseFast => false,
+};
 
 const tas_log_reader = @import("tas_log_reader");
 const TasLog = tas_log_reader.TasLog;

@@ -1,5 +1,6 @@
 const std = @import("std");
 const c = @import("c");
+const checks = @import("root").checks;
 
 pub const Types = struct {
     pub var GFile: c.GType = undefined;
@@ -39,6 +40,13 @@ pub inline fn upcast(comptime T: type, ptr: anytype) *T {
     }
 
     return @ptrCast(ptr);
+}
+
+pub inline fn downcast(ptr: anytype, comptime T: type, g_type: c.GType) *T {
+    if (!checks) return @ptrCast(@alignCast(ptr));
+
+    const object = upcast(c.GObject, ptr);
+    return @ptrCast(@alignCast(c.g_type_check_instance_cast(&object.g_type_instance, g_type)));
 }
 
 pub fn connect(
