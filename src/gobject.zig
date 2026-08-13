@@ -31,7 +31,7 @@ pub inline fn isA(comptime derived: type, comptime parent: type) ?bool {
     return isA(first, parent);
 }
 
-pub inline fn upcast(comptime T: type, ptr: anytype) *T {
+pub inline fn as(comptime T: type, ptr: anytype) *T {
     comptime {
         const pointee = @typeInfo(@TypeOf(ptr)).pointer.child;
         if (isA(pointee, T) != true) {
@@ -45,7 +45,7 @@ pub inline fn upcast(comptime T: type, ptr: anytype) *T {
 pub inline fn downcast(ptr: anytype, comptime T: type, g_type: c.GType) *T {
     if (!checks) return @ptrCast(@alignCast(ptr));
 
-    const object = upcast(c.GObject, ptr);
+    const object = as(c.GObject, ptr);
     return @ptrCast(@alignCast(c.g_type_check_instance_cast(&object.g_type_instance, g_type)));
 }
 

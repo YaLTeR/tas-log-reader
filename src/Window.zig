@@ -31,7 +31,11 @@ pub const TlrWindow = extern struct {
         );
     }
 
-    inline fn downcast(object: anytype) *Self {
+    pub inline fn as(self: *Self, comptime T: type) *T {
+        return g.as(T, self);
+    }
+
+    pub inline fn downcast(object: anytype) *Self {
         return g.downcast(object, Self, g_type);
     }
 
@@ -50,7 +54,7 @@ pub const TlrWindow = extern struct {
         const zone = Tracy.zone(@src());
         defer zone.end();
 
-        c.gtk_window_present(@ptrCast(self));
+        c.gtk_window_present(self.as(c.GtkWindow));
     }
 
     pub fn setFile(self: *Self, file: ?*c.GFile) void {
@@ -59,21 +63,21 @@ pub const TlrWindow = extern struct {
 
         if (!g.set_object(@ptrCast(&self.file), @ptrCast(@alignCast(file)))) return;
 
-        c.g_object_notify_by_pspec(@ptrCast(self), pSpec(Prop.file).*);
+        c.g_object_notify_by_pspec(self.as(c.GObject), pSpec(Prop.file).*);
 
-        const label = c.gtk_window_get_child(@ptrCast(self));
+        const label = g.downcast(c.gtk_window_get_child(self.as(c.GtkWindow)), c.GtkLabel, c.gtk_label_get_type());
 
         if (@as(?[*:0]u8, c.g_file_get_path(self.file))) |path| {
-            c.gtk_label_set_label(@ptrCast(label), path);
+            c.gtk_label_set_label(label, path);
             c.g_free(path);
         } else {
-            c.gtk_label_set_label(@ptrCast(label), "No file");
+            c.gtk_label_set_label(label, "No file");
         }
     }
 
     fn init(self: *Self) void {
-        const label = c.gtk_label_new("No file");
-        c.gtk_window_set_child(@ptrCast(self), label);
+        const label = c.gtk_button_new();
+        c.gtk_window_set_child(self.as(c.GtkWindow), label);
     }
 
     fn dispose(object: ?*c.GObject) callconv(.c) void {
@@ -81,7 +85,7 @@ pub const TlrWindow = extern struct {
 
         g.clear_object(&self.file);
 
-        g.upcast(c.GObjectClass, Class.parent_class).dispose.?(object);
+        g.as(c.GObjectClass, Class.parent_class).dispose.?(object);
     }
 
     fn set_property(object: ?*c.GObject, property_id: c.guint, value: ?*const c.GValue, pspec: ?*c.GParamSpec) callconv(.c) void {
@@ -113,7 +117,7 @@ pub const TlrWindow = extern struct {
         fn init(class: *Class) void {
             parent_class = @ptrCast(@alignCast(c.g_type_class_peek_parent(class)));
 
-            const object_class = g.upcast(c.GObjectClass, class);
+            const object_class = g.as(c.GObjectClass, class);
             object_class.dispose = Self.dispose;
             object_class.set_property = Self.set_property;
             object_class.get_property = Self.get_property;

@@ -22,7 +22,11 @@ pub const TlrApplication = extern struct {
         );
     }
 
-    inline fn downcast(object: anytype) *Self {
+    pub inline fn as(self: *Self, comptime T: type) *T {
+        return g.as(T, self);
+    }
+
+    pub inline fn downcast(object: anytype) *Self {
         return g.downcast(object, Self, g_type);
     }
 
@@ -39,7 +43,7 @@ pub const TlrApplication = extern struct {
 
     pub fn run(self: *Self, args: std.process.Args) c_int {
         return c.g_application_run(
-            @ptrCast(self),
+            self.as(c.GApplication),
             @intCast(args.vector.len),
             @ptrCast(@constCast(args.vector.ptr)),
         );
@@ -51,7 +55,7 @@ pub const TlrApplication = extern struct {
         // Put it in a new window group so modal dialogs don't block other windows.
         const group = c.gtk_window_group_new();
         defer c.g_object_unref(group);
-        c.gtk_window_group_add_window(group, @ptrCast(window));
+        c.gtk_window_group_add_window(group, window.as(c.GtkWindow));
 
         return window;
     }
@@ -64,7 +68,7 @@ pub const TlrApplication = extern struct {
         const zone = Tracy.zone(@src());
         defer zone.end();
 
-        g.upcast(c.GApplicationClass, Class.parent_class).startup.?(app);
+        g.as(c.GApplicationClass, Class.parent_class).startup.?(app);
     }
 
     fn activate(app: ?*c.GApplication) callconv(.c) void {
@@ -106,7 +110,7 @@ pub const TlrApplication = extern struct {
         fn init(class: *Class) void {
             parent_class = @ptrCast(@alignCast(c.g_type_class_peek_parent(class)));
 
-            const application_class = g.upcast(c.GApplicationClass, class);
+            const application_class = g.as(c.GApplicationClass, class);
             application_class.startup = Self.startup;
             application_class.activate = Self.activate;
             application_class.open = Self.open;
