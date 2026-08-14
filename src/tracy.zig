@@ -36,8 +36,8 @@ pub inline fn zone(comptime src: SourceLocation) Zone {
     const global = struct {
         const loc: ___tracy_source_location_data = .{
             .name = null,
-            .function = src.fn_name.ptr,
-            .file = src.file.ptr,
+            .function = src.fn_name,
+            .file = src.file,
             .line = src.line,
             .color = 0,
         };
@@ -51,9 +51,9 @@ pub inline fn zoneN(comptime src: SourceLocation, comptime name: [:0]const u8) Z
 
     const global = struct {
         const loc: ___tracy_source_location_data = .{
-            .name = name.ptr,
-            .function = src.fn_name.ptr,
-            .file = src.file.ptr,
+            .name = name,
+            .function = src.fn_name,
+            .file = src.file,
             .line = src.line,
             .color = 0,
         };

@@ -4,6 +4,7 @@ const g = @import("gobject.zig");
 const Tracy = @import("root").Tracy;
 
 const TlrApplication = @import("Application.zig").TlrApplication;
+const TlrTable = @import("Table.zig").TlrTable;
 
 pub const TlrWindow = extern struct {
     parent: c.GtkApplicationWindow,
@@ -64,20 +65,19 @@ pub const TlrWindow = extern struct {
         if (!g.set_object(@ptrCast(&self.file), @ptrCast(@alignCast(file)))) return;
 
         c.g_object_notify_by_pspec(self.as(c.GObject), pSpec(Prop.file).*);
-
-        const label = g.downcast(c.gtk_window_get_child(self.as(c.GtkWindow)), c.GtkLabel, c.gtk_label_get_type());
-
-        if (@as(?[*:0]u8, c.g_file_get_path(self.file))) |path| {
-            c.gtk_label_set_label(label, path);
-            c.g_free(path);
-        } else {
-            c.gtk_label_set_label(label, "No file");
-        }
     }
 
     fn init(self: *Self) void {
-        const label = c.gtk_button_new();
-        c.gtk_window_set_child(self.as(c.GtkWindow), label);
+        const table = TlrTable.new(null);
+        c.gtk_window_set_child(self.as(c.GtkWindow), table.as(c.GtkWidget));
+
+        _ = c.g_object_bind_property(
+            self.as(c.GObject),
+            "file",
+            table.as(c.GObject),
+            "file",
+            c.G_BINDING_DEFAULT,
+        );
     }
 
     fn dispose(object: ?*c.GObject) callconv(.c) void {
@@ -127,7 +127,7 @@ pub const TlrWindow = extern struct {
                 "",
                 "",
                 g.Types.GFile,
-                c.G_PARAM_READWRITE | c.G_PARAM_CONSTRUCT | c.G_PARAM_EXPLICIT_NOTIFY | c.G_PARAM_STATIC_STRINGS,
+                c.G_PARAM_READWRITE | c.G_PARAM_EXPLICIT_NOTIFY | c.G_PARAM_STATIC_STRINGS,
             );
 
             c.g_object_class_install_properties(object_class, @intFromEnum(Prop.N), &properties);

@@ -97,11 +97,11 @@ pub const PmState = struct {
     dst: u8 = 0,
 };
 
-pub fn parse(gpa: Allocator, contents: []const u8) ParseError(Scanner)!TasLog {
-    const zone = Tracy.zone(@src());
+pub fn parse(rv: *TasLog, gpa: Allocator, contents: []const u8) ParseError(Scanner)!void {
+    const zone = Tracy.zoneN(@src(), "TasLog.parse");
     defer zone.end();
 
-    var rv: TasLog = .{
+    rv.* = .{
         .meta = undefined,
         .pf = .empty,
         .arena = ArenaAllocator.init(gpa),
@@ -145,8 +145,6 @@ pub fn parse(gpa: Allocator, contents: []const u8) ParseError(Scanner)!TasLog {
         };
         try rv.pf.append(gpa, pf);
     }
-
-    return rv;
 }
 
 pub fn deinit(self: *TasLog) void {
