@@ -1,6 +1,7 @@
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 const c = @import("c");
 const g = @import("gobject.zig");
 const root = @import("root");
@@ -9,13 +10,18 @@ const Tracy = root.Tracy;
 const tas_log_reader = @import("tas_log_reader");
 const TasLog = tas_log_reader.TasLog;
 
+// Values from libadwaita.
+const dimmed = 36045;
+const x_padding = 6;
+const y_padding = 3;
+
 const Log = struct {
     file: Io.File,
     mmap: Io.File.MemoryMap,
     log: TasLog,
 
     fn init(self: *@This(), io: Io, gpa: Allocator, path: []const u8) !void {
-        const zone = Tracy.zoneN(@src(), "Log.init");
+        const zone = Tracy.zoneN(@src(), "Log::init");
         defer zone.end();
 
         const file = try Io.Dir.cwd().openFile(io, path, .{
@@ -40,7 +46,7 @@ const Log = struct {
     }
 
     fn deinit(self: *@This(), io: Io) void {
-        const zone = Tracy.zoneN(@src(), "Log.deinit");
+        const zone = Tracy.zoneN(@src(), "Log::deinit");
         defer zone.end();
 
         self.log.deinit();
@@ -49,13 +55,70 @@ const Log = struct {
     }
 };
 
+const SizedLayout = struct {
+    layout: *c.PangoLayout,
+    w: i32,
+    h: i32,
+
+    fn measure(self: *@This()) void {
+        c.pango_layout_get_pixel_size(self.layout, &self.w, &self.h);
+    }
+};
+
+const Column = struct {
+    name: [:0]const u8,
+    layouts: ArrayList(SizedLayout),
+    width: i32,
+
+    customize: ?*const fn (attrs: *c.PangoAttrList) void,
+    format: *const fn (buf: []u8, n: usize, pf: *TasLog.PhysicsFrame) [:0]u8,
+
+    fn init(name: [:0]const u8, customize: ?*const fn (attrs: *c.PangoAttrList) void, format: *const fn (
+        buf: []u8,
+        n: usize,
+        pf: *TasLog.PhysicsFrame
+    ) [:0]u8,) @This() {
+        return .{
+            .name = name,
+            .layouts = .empty,
+            .width = undefined,
+            .customize = customize,
+            .format = format,
+        };
+    }
+
+    fn dispose(self: *@This(), gpa: Allocator) void {
+        if (self.layouts.capacity == 0) return;
+
+        std.debug.assert(self.layouts.items.len == 0);
+        self.layouts.clearAndFree(gpa);
+    }
+
+    fn destroyLayouts(self: *@This()) void {
+        for (self.layouts.items) |sized| {
+            c.g_object_unref(@ptrCast(sized.layout));
+        }
+
+        self.layouts.clearRetainingCapacity();
+    }
+
+    fn computeWidth(self: *@This()) void {
+        // TODO: instead of this, measure one template string for width.
+        self.width = 0;
+        for (self.layouts.items) |sized| {
+            self.width = @max(self.width, sized.w);
+        }
+    }
+};
+
 pub const TlrTable = extern struct {
     parent: c.GtkWidget,
 
     file: ?*c.GFile,
-    layout: ?*c.PangoLayout,
 
     log: ?*Log,
+
+    columns: ?*[3]Column,
 
     pub const Self = @This();
     pub var g_type: c.GType = undefined;
@@ -133,7 +196,58 @@ pub const TlrTable = extern struct {
     }
 
     fn init(self: *Self) void {
-        _ = self;
+        const Customize = struct {
+            fn time(attrs: *c.PangoAttrList) void {
+                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
+            }
+
+            fn ms(attrs: *c.PangoAttrList) void {
+                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
+            }
+        };
+
+        const Format = struct {
+            fn fit(buf: []u8, comptime fmt: []const u8, args: anytype) [:0]u8 {
+                return std.fmt.bufPrintSentinel(buf, fmt, args, 0) catch {
+                    buf[buf.len - 1] = 0;
+                    return buf[0 .. buf.len - 1 :0];
+                };
+            }
+
+            fn empty(buf: []u8) [:0]u8 {
+                buf[0] = 0;
+                return buf[0..0 :0];
+            }
+
+            fn frame(buf: []u8, n: usize, pf: *TasLog.PhysicsFrame) [:0]u8 {
+                _ = pf;
+                return fit(buf, "{}", .{n});
+            }
+
+            fn time(buf: []u8, n: usize, pf: *TasLog.PhysicsFrame) [:0]u8 {
+                _ = n;
+                return if (pf.ft) |ft|
+                    fit(buf, "{:.3}", .{ft})
+                else
+                    empty(buf);
+            }
+
+            fn ms(buf: []u8, n: usize, pf: *TasLog.PhysicsFrame) [:0]u8 {
+                _ = n;
+                // TODO need to show one row per command frame.
+                return if (pf.cf.len > 0)
+                    fit(buf, "{}", .{pf.cf[0].ms})
+                else
+                    empty(buf);
+            }
+        };
+
+        self.columns = root.gpa.create([3]Column) catch |e| std.debug.panic("{}", .{e});
+        self.columns.?.* = .{
+            .init("Frame", null, Format.frame),
+            .init("Time", Customize.time, Format.time),
+            .init("Ms", Customize.ms, Format.ms),
+        };
     }
 
     fn measure(
@@ -145,42 +259,84 @@ pub const TlrTable = extern struct {
         min_baseline: ?*c_int,
         nat_baseline: ?*c_int,
     ) callconv(.c) void {
+        const zone = Tracy.zoneN(@src(), "TlrTable::measure");
+        defer zone.end();
+
         const self = downcast(widget.?);
         _ = for_size;
+        _ = min_baseline;
+        _ = nat_baseline;
 
-        if (self.layout == null) {
-            const text = if (self.log) |log|
-                log.log.meta.tool_ver orelse "missing"
-            else
-                "no log";
-            const textZ = root.gpa.dupeSentinel(u8, text, 0) catch |e| std.debug.panic("{}", .{e});
-            defer root.gpa.free(textZ);
+        var w: i32 = 0;
+        var h: i32 = 0;
+        var header_h: i32 = 0;
 
-            self.layout = c.gtk_widget_create_pango_layout(widget, textZ);
+        // Should be more than enough.
+        var buf: [16]u8 = undefined;
 
-            const attrs = c.pango_attr_list_new();
-            defer c.pango_attr_list_unref(attrs);
+        for (self.columns.?) |*column| {
+            if (column.layouts.items.len == 0) {
+                // Initialize layouts.
 
-            c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
+                // Header.
+                const header_layout = c.gtk_widget_create_pango_layout(widget, column.name).?;
 
-            c.pango_layout_set_attributes(self.layout, attrs);
+                const context = c.pango_layout_get_context(header_layout);
+                const desc = c.pango_context_get_font_description(context);
+                const size = c.pango_font_description_get_size(desc);
+                std.debug.assert(c.pango_font_description_get_size_is_absolute(desc) != 0);
+
+                const header_size = @divTrunc(size * 82, 100); // From libadwaita .caption-heading
+
+                const header_attrs = c.pango_attr_list_new();
+                defer c.pango_attr_list_unref(header_attrs);
+                c.pango_attr_list_insert(header_attrs, c.pango_attr_size_new_absolute(header_size));
+                c.pango_layout_set_attributes(header_layout, header_attrs);
+
+                var header_sized = SizedLayout{ .layout = header_layout, .w = undefined, .h = undefined };
+                header_sized.measure();
+                column.layouts.append(root.gpa, header_sized) catch |e| std.debug.panic("{}", .{e});
+
+                // Some rows.
+                if (self.log) |log| {
+                    const pfs = log.log.pf.items;
+                    for (1.., pfs[0..@min(pfs.len, 16)]) |n, *pf| {
+                        const text = column.format(&buf, n, pf);
+                        const layout = c.gtk_widget_create_pango_layout(widget, text).?;
+
+                        const attrs = c.pango_attr_list_new().?;
+                        defer c.pango_attr_list_unref(attrs);
+                        c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
+                        if (column.customize) |f| f(attrs);
+                        c.pango_layout_set_attributes(layout, attrs);
+
+                        var sized = SizedLayout{ .layout = layout, .w = undefined, .h = undefined };
+                        sized.measure();
+                        column.layouts.append(root.gpa, sized) catch |e| std.debug.panic("{}", .{e});
+                    }
+                }
+
+                column.computeWidth();
+            }
+
+            w += column.width + x_padding * 2;
+            header_h = @max(header_h, column.layouts.items[0].h);
+
+            if (column.layouts.items.len > 1) {
+                h = @max(h, column.layouts.items[1].h);
+            }
         }
-
-        var width: c_int = undefined;
-        var height: c_int = undefined;
-        c.pango_layout_get_pixel_size(self.layout, &width, &height);
-
-        if (min_baseline) |p| p.* = -1;
-        if (nat_baseline) |p| p.* = -1;
+        const n_rows: i32 = @intCast(self.columns.?[0].layouts.items.len - 1);
+        h = header_h + h * n_rows + y_padding * 2 * (n_rows + 1);
 
         switch (orientation) {
             c.GTK_ORIENTATION_HORIZONTAL => {
-                if (min) |p| p.* = width;
-                if (nat) |p| p.* = width;
+                min.?.* = w;
+                nat.?.* = w;
             },
             c.GTK_ORIENTATION_VERTICAL => {
-                if (min) |p| p.* = height;
-                if (nat) |p| p.* = height;
+                min.?.* = h;
+                nat.?.* = h;
             },
             else => unreachable,
         }
@@ -202,27 +358,26 @@ pub const TlrTable = extern struct {
     fn snapshot(widget: ?*c.GtkWidget, snap: ?*c.GtkSnapshot) callconv(.c) void {
         const self = downcast(widget.?);
 
-        // const w = c.gtk_widget_get_width(widget);
-        // const h = c.gtk_widget_get_height(widget);
-        //
-        // c.gtk_snapshot_append_color(
-        //     snap,
-        //     &.{ .red = 1, .green = 0, .blue = 0, .alpha = 1 },
-        //     &.{
-        //         .origin = .{ .x = 0, .y = 0 },
-        //         .size = .{ .width = @floatFromInt(w), .height = @floatFromInt(h) },
-        //     },
-        // );
-
         var color: c.GdkRGBA = undefined;
         c.gtk_widget_get_color(widget, &color);
-        c.gtk_snapshot_append_layout(snap, self.layout, &color);
+
+        for (self.columns.?) |column| {
+            var h: i32 = y_padding;
+            c.gtk_snapshot_translate(snap, &.{ .x = x_padding, .y = y_padding });
+            for (column.layouts.items) |layout| {
+                c.gtk_snapshot_append_layout(snap, layout.layout, &color);
+                c.gtk_snapshot_translate(snap, &.{ .x = 0, .y = @floatFromInt(layout.h + y_padding * 2) });
+                h += layout.h + y_padding * 2;
+            }
+            c.gtk_snapshot_translate(snap, &.{ .x = @floatFromInt(column.width + x_padding * 2), .y = @floatFromInt(-h) });
+        }
     }
 
     fn unroot(widget: ?*c.GtkWidget) callconv(.c) void {
         const self = downcast(widget.?);
+        for (self.columns.?) |*column| column.destroyLayouts();
 
-        g.clear_object(&self.layout);
+        g.as(c.GtkWidgetClass, Class.parent_class).unroot.?(widget);
     }
 
     fn dispose(object: ?*c.GObject) callconv(.c) void {
@@ -230,6 +385,17 @@ pub const TlrTable = extern struct {
 
         g.clear_object(&self.file);
         self.clearLog();
+        for (self.columns.?) |*column| column.dispose(root.gpa);
+
+        g.as(c.GObjectClass, Class.parent_class).dispose.?(object);
+    }
+
+    fn finalize(object: ?*c.GObject) callconv(.c) void {
+        const self = downcast(object.?);
+
+        const columns = self.columns.?;
+        self.columns = null;
+        root.gpa.destroy(columns);
 
         g.as(c.GObjectClass, Class.parent_class).dispose.?(object);
     }
@@ -271,6 +437,7 @@ pub const TlrTable = extern struct {
 
             const object_class = g.as(c.GObjectClass, class);
             object_class.dispose = Self.dispose;
+            object_class.finalize = Self.finalize;
             object_class.set_property = Self.set_property;
             object_class.get_property = Self.get_property;
 

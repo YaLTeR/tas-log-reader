@@ -98,7 +98,7 @@ pub const PmState = struct {
 };
 
 pub fn parse(rv: *TasLog, gpa: Allocator, contents: []const u8) ParseError(Scanner)!void {
-    const zone = Tracy.zoneN(@src(), "TasLog.parse");
+    const zone = Tracy.zoneN(@src(), "TasLog::parse");
     defer zone.end();
 
     rv.* = .{
