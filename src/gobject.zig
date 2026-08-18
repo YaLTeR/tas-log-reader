@@ -7,12 +7,14 @@ pub const Types = struct {
     pub var GtkApplication: c.GType = undefined;
     pub var GtkApplicationWindow: c.GType = undefined;
     pub var GtkWidget: c.GType = undefined;
+    pub var GtkScrollable: c.GType = undefined;
 
     pub fn fetch() void {
         GFile = c.g_file_get_type();
         GtkApplication = c.gtk_application_get_type();
         GtkApplicationWindow = c.gtk_application_window_get_type();
         GtkWidget = c.gtk_widget_get_type();
+        GtkScrollable = c.gtk_scrollable_get_type();
     }
 };
 
@@ -49,11 +51,30 @@ pub inline fn downcast(ptr: anytype, comptime T: type, g_type: c.GType) *T {
     return @ptrCast(@alignCast(c.g_type_check_instance_cast(&object.g_type_instance, g_type)));
 }
 
-pub fn connect(
+pub inline fn connect(
     instance: *anyopaque,
     signal: [*:0]const u8,
     comptime handler: anytype,
     data: c.gpointer,
+) c.gulong {
+    return connect_with_flags(instance, signal, handler, data, c.G_CONNECT_DEFAULT);
+}
+
+pub inline fn connect_swapped(
+    instance: *anyopaque,
+    signal: [*:0]const u8,
+    comptime handler: anytype,
+    data: c.gpointer,
+) c.gulong {
+    return connect_with_flags(instance, signal, handler, data, c.G_CONNECT_SWAPPED);
+}
+
+pub fn connect_with_flags(
+    instance: *anyopaque,
+    signal: [*:0]const u8,
+    comptime handler: anytype,
+    data: c.gpointer,
+    flags: c.GConnectFlags,
 ) c.gulong {
     const conv = @typeInfo(@TypeOf(handler)).@"fn".calling_convention;
     comptime if (!std.builtin.CallingConvention.eql(conv, .c)) {
@@ -66,7 +87,19 @@ pub fn connect(
         @ptrCast(&handler),
         data,
         null,
-        c.G_CONNECT_DEFAULT,
+        flags,
+    );
+}
+
+pub fn disconnect_by_func(instance: *anyopaque, comptime handler: anytype, data: c.gpointer) c.guint {
+    return c.g_signal_handlers_disconnect_matched(
+        instance,
+        c.G_SIGNAL_MATCH_FUNC | c.G_SIGNAL_MATCH_DATA,
+        0,
+        0,
+        null,
+        @ptrCast(@constCast(&handler)),
+        data,
     );
 }
 

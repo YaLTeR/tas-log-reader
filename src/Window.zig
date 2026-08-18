@@ -69,7 +69,10 @@ pub const TlrWindow = extern struct {
 
     fn init(self: *Self) void {
         const table = TlrTable.new(null);
-        c.gtk_window_set_child(self.as(c.GtkWindow), table.as(c.GtkWidget));
+        const sw = c.gtk_scrolled_window_new();
+        c.gtk_scrolled_window_set_child(@ptrCast(sw), table.as(c.GtkWidget));
+        c.gtk_scrolled_window_set_propagate_natural_width(@ptrCast(sw), 1);
+        c.gtk_window_set_child(self.as(c.GtkWindow), sw);
 
         _ = c.g_object_bind_property(
             self.as(c.GObject),

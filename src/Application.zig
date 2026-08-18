@@ -3,6 +3,7 @@ const c = @import("c");
 const g = @import("gobject.zig");
 const Tracy = @import("root").Tracy;
 
+const TlrTable = @import("Table.zig").TlrTable;
 const TlrWindow = @import("Window.zig").TlrWindow;
 
 pub const TlrApplication = extern struct {
@@ -12,6 +13,8 @@ pub const TlrApplication = extern struct {
     pub var g_type: c.GType = undefined;
 
     pub fn register() void {
+        g.Types.GtkApplication = c.gtk_application_get_type();
+
         g_type = g.type_register_static_simple(
             g.Types.GtkApplication,
             "TlrApplication",
@@ -67,6 +70,13 @@ pub const TlrApplication = extern struct {
     fn startup(app: ?*c.GApplication) callconv(.c) void {
         const zone = Tracy.zone(@src());
         defer zone.end();
+
+        std.log.debug("startup", .{});
+
+        // Now that we're going to run the app, fetch the rest of the types.
+        g.Types.fetch();
+        TlrWindow.register();
+        TlrTable.register();
 
         g.as(c.GApplicationClass, Class.parent_class).startup.?(app);
     }

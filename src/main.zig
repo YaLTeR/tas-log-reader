@@ -9,6 +9,8 @@ pub const checks = switch (builtin.mode) {
     .ReleaseSmall, .ReleaseFast => false,
 };
 
+// While it is possible to pass these via boxed properties,
+// it's quite annoying and not really needed.
 pub var gpa: std.mem.Allocator = undefined;
 pub var io: std.Io = undefined;
 
@@ -17,8 +19,6 @@ const TasLog = tas_log_reader.TasLog;
 pub const Tracy = tas_log_reader.Tracy;
 
 const TlrApplication = @import("Application.zig").TlrApplication;
-const TlrTable = @import("Table.zig").TlrTable;
-const TlrWindow = @import("Window.zig").TlrWindow;
 
 pub fn main(init: std.process.Init.Minimal) u8 {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
@@ -36,11 +36,7 @@ pub fn main(init: std.process.Init.Minimal) u8 {
     defer threaded.deinit();
     io = threaded.io();
 
-    g.Types.fetch();
     TlrApplication.register();
-    TlrTable.register();
-    TlrWindow.register();
-
     const app = TlrApplication.new();
     defer c.g_object_unref(app);
 
