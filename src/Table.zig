@@ -225,6 +225,7 @@ pub const TlrTable = extern struct {
     // Extern structs aren't allowed to contain ?[]Column...
     columns: ?*[6]Column,
     first_row_is: usize,
+    last_row_is: usize,
 
     pub const Self = @This();
     pub var g_type: c.GType = undefined;
@@ -452,7 +453,7 @@ pub const TlrTable = extern struct {
             }
         };
 
-        self.columns = root.gpa.create([6]Column) catch |e| std.debug.panic("{}", .{e});
+        self.columns = root.gpa.create([6]Column) catch unreachable;
         self.columns.?.* = .{
             .init("Frame", "99999", .right, null, Format.frame),
             .init("Time", "0.000", .left, Customize.time, Format.time),
@@ -591,6 +592,7 @@ pub const TlrTable = extern struct {
 
         const full_height = c.gtk_widget_get_height(self.as(c.GtkWidget));
 
+        var n: usize = 0;
         for (self.columns.?) |*column| {
             const column_w = column.width();
 
@@ -614,14 +616,14 @@ pub const TlrTable = extern struct {
                 var buf: [16]u8 = undefined;
 
                 // TODO: avoid reformatting when scrolling slowly.
-                const format_from = if (first_row == self.first_row_is) column.layouts.items.len else 0;
+                const format_from = if (first_row == self.first_row_is) self.last_row_is - self.first_row_is else 0;
 
                 // Cannot use for (0..) |n| because Zig complains about an unbounded loop...
-                var n: usize = 0;
+                n = 0;
                 while (h < full_height and n + first_row < log.rows.items.len) {
                     if (column.layouts.items.len <= n) {
                         const layout = c.gtk_widget_create_pango_layout(widget, null).?;
-                        column.layouts.append(root.gpa, layout) catch |e| std.debug.panic("{}", .{e});
+                        column.layouts.append(root.gpa, layout) catch unreachable;
                     }
                     const layout = column.layouts.items[n];
 
@@ -652,11 +654,8 @@ pub const TlrTable = extern struct {
                     const offset: f32 = @floatFromInt(column_w - w);
                     c.gtk_snapshot_translate(snap, &.{ .x = offset, .y = 0 });
                     c.gtk_snapshot_append_layout(snap, layout, &color);
-                    c.gtk_snapshot_translate(snap, &.{
-                        .x = -offset,
-                        .y = @floatFromInt(column.template_layout.?.h + y_padding * 2),
-                    });
-                    h += column.template_layout.?.h + y_padding * 2;
+                    c.gtk_snapshot_translate(snap, &.{ .x = -offset, .y = @floatFromInt(row_h) });
+                    h += row_h;
 
                     n += 1;
                 }
@@ -670,6 +669,7 @@ pub const TlrTable = extern struct {
         }
 
         self.first_row_is = first_row;
+        self.last_row_is = first_row + n;
     }
 
     fn unroot(widget: ?*c.GtkWidget) callconv(.c) void {
