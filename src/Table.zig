@@ -464,6 +464,7 @@ pub const TlrTable = extern struct {
         };
 
         c.gtk_widget_add_css_class(self.as(c.GtkWidget), "view");
+        c.gtk_widget_set_overflow(self.as(c.GtkWidget), c.GTK_OVERFLOW_HIDDEN);
     }
 
     fn measure(
