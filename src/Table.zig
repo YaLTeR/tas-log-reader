@@ -96,7 +96,7 @@ const SizedLayout = struct {
     }
 };
 
-const Align = enum { left, right };
+const Align = enum { left, center, right };
 
 const Column = struct {
     name: []const u8,
@@ -108,11 +108,9 @@ const Column = struct {
     layouts: ArrayList(*c.PangoLayout),
 
     xalign: Align,
-    customize: ?*const CustomizeFn,
-    format: *const FormatFn,
+    bind: *const BindFn,
 
-    const CustomizeFn = fn (attrs: *c.PangoAttrList, row: Data) void;
-    const FormatFn = fn (buf: []u8, row: Data) []u8;
+    const BindFn = fn (buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8;
 
     const Data = struct {
         n: usize,
@@ -124,8 +122,7 @@ const Column = struct {
         name: []const u8,
         template: []const u8,
         xalign: Align,
-        customize: ?*const CustomizeFn,
-        format: *const FormatFn,
+        bind: *const BindFn,
     ) @This() {
         return .{
             .name = name,
@@ -134,8 +131,7 @@ const Column = struct {
             .template_layout = null,
             .layouts = .empty,
             .xalign = xalign,
-            .customize = customize,
-            .format = format,
+            .bind = bind,
         };
     }
 
@@ -223,7 +219,7 @@ pub const TlrTable = extern struct {
     log: ?*Log,
 
     // Extern structs aren't allowed to contain ?[]Column...
-    columns: ?*[6]Column,
+    columns: ?*[29]Column,
     first_row_is: usize,
     last_row_is: usize,
 
@@ -375,54 +371,32 @@ pub const TlrTable = extern struct {
     }
 
     fn init(self: *Self) void {
-        const Customize = struct {
-            const Data = Column.Data;
-
-            fn time(attrs: *c.PangoAttrList, row: Data) void {
-                _ = row;
-                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
-            }
-
-            fn ms(attrs: *c.PangoAttrList, row: Data) void {
-                _ = row;
-                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
-            }
-
-            fn vert_speed(attrs: *c.PangoAttrList, row: Data) void {
-                if (row.cf) |cf| {
-                    if (cf.postpm) |pm| {
-                        if (pm.vel[2] > 0) {
-                            c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(0x1c * 257, 0x71 * 257, 0xd8 * 257));
-                        } else {
-                            c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(0xed * 257, 0x33 * 257, 0x3b * 257));
-                        }
-                    }
-                }
-            }
-        };
-
-        const Format = struct {
+        const Bind = struct {
             const Data = Column.Data;
 
             fn fit(buf: []u8, comptime fmt: []const u8, args: anytype) []u8 {
                 return std.fmt.bufPrint(buf, fmt, args) catch return buf;
             }
 
-            fn frame(buf: []u8, row: Data) []u8 {
+            fn frame(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
                 return fit(buf, "{}", .{row.n});
             }
 
-            fn time(buf: []u8, row: Data) []u8 {
+            fn time(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
                 const ft = row.pf.ft orelse return buf[0..0];
+                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
                 return fit(buf, "{:.3}", .{ft});
             }
 
-            fn ms(buf: []u8, row: Data) []u8 {
+            fn ms(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
                 const cf = row.cf orelse return buf[0..0];
+                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
                 return fit(buf, "{}", .{cf.ms});
             }
 
-            fn speed(buf: []u8, row: Data) []u8 {
+            fn speed(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
                 const cf = row.cf orelse return buf[0..0];
                 const pm = cf.postpm orelse return buf[0..0];
 
@@ -432,7 +406,8 @@ pub const TlrTable = extern struct {
                 return fit(buf, "{:.3}", .{math.hypot(vel[0], vel[1])});
             }
 
-            fn vel_yaw(buf: []u8, row: Data) []u8 {
+            fn vel_yaw(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
                 const cf = row.cf orelse return buf[0..0];
                 const pm = cf.postpm orelse return buf[0..0];
 
@@ -442,25 +417,221 @@ pub const TlrTable = extern struct {
                 return fit(buf, "{:.3}", .{math.atan2(vel[1], vel[0]) * math.deg_per_rad});
             }
 
-            fn vert_speed(buf: []u8, row: Data) []u8 {
+            fn vert_speed(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
                 const cf = row.cf orelse return buf[0..0];
                 const pm = cf.postpm orelse return buf[0..0];
 
-                const vel = pm.vel;
-                if (vel[2] == 0) return buf[0..0];
+                const z = pm.vel[2];
+                if (z == 0) return buf[0..0];
 
-                return fit(buf, "{:.1}", .{vel[2]});
+                if (z > 0) {
+                    c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(0x1c * 257, 0x71 * 257, 0xd8 * 257));
+                } else {
+                    c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(0xed * 257, 0x33 * 257, 0x3b * 257));
+                }
+
+                return fit(buf, "{:.1}", .{z});
+            }
+
+            fn G(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                _ = row;
+                return buf[0..0];
+            }
+
+            fn K(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                _ = row;
+                return buf[0..0];
+            }
+
+            fn L(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                _ = row;
+                return buf[0..0];
+            }
+
+            fn W(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                _ = row;
+                return buf[0..0];
+            }
+
+            fn J(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                _ = row;
+                return buf[0..0];
+            }
+
+            fn D(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                _ = row;
+                return buf[0..0];
+            }
+
+            fn F(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                const cf = row.cf orelse return buf[0..0];
+
+                const x = cf.fsu[0];
+                if (x == 0) return buf[0..0];
+
+                if (x > 0) {
+                    return fit(buf, "F", .{});
+                } else {
+                    return fit(buf, "B", .{});
+                }
+            }
+
+            fn S(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                const cf = row.cf orelse return buf[0..0];
+
+                const x = cf.fsu[1];
+                if (x == 0) return buf[0..0];
+
+                if (x > 0) {
+                    return fit(buf, "R", .{});
+                } else {
+                    return fit(buf, "L", .{});
+                }
+            }
+
+            fn U(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                const cf = row.cf orelse return buf[0..0];
+
+                const x = cf.fsu[2];
+                if (x == 0) return buf[0..0];
+
+                if (x > 0) {
+                    return fit(buf, "U", .{});
+                } else {
+                    return fit(buf, "D", .{});
+                }
+            }
+
+            fn yaw(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                const cf = row.cf orelse return buf[0..0];
+                return fit(buf, "{:.3}", .{cf.view[0]});
+            }
+
+            fn pitch(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                const cf = row.cf orelse return buf[0..0];
+                return fit(buf, "{:.3}", .{cf.view[1]});
+            }
+
+            fn health(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                const cf = row.cf orelse return buf[0..0];
+                const hp = cf.hp orelse return buf[0..0];
+                return fit(buf, "{:.0}", .{hp});
+            }
+
+            fn armor(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                const cf = row.cf orelse return buf[0..0];
+                const ap = cf.ap orelse return buf[0..0];
+                return fit(buf, "{:.1}", .{ap});
+            }
+
+            fn E(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                _ = row;
+                return buf[0..0];
+            }
+
+            fn A1(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                _ = row;
+                return buf[0..0];
+            }
+
+            fn A2(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                _ = row;
+                return buf[0..0];
+            }
+
+            fn R(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                _ = row;
+                return buf[0..0];
+            }
+
+            fn cl_state(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
+                return fit(buf, "{}", .{row.pf.cls});
+            }
+
+            fn z_pos(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                const cf = row.cf orelse return buf[0..0];
+                const pm = cf.postpm orelse return buf[0..0];
+                return fit(buf, "{:.3}", .{pm.pos[2]});
+            }
+
+            fn x_pos(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                const cf = row.cf orelse return buf[0..0];
+                const pm = cf.postpm orelse return buf[0..0];
+                return fit(buf, "{:.3}", .{pm.pos[0]});
+            }
+
+            fn y_pos(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                _ = attrs;
+                const cf = row.cf orelse return buf[0..0];
+                const pm = cf.postpm orelse return buf[0..0];
+                return fit(buf, "{:.3}", .{pm.pos[1]});
+            }
+
+            fn sh_seed(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                const cf = row.cf orelse return buf[0..0];
+                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
+                return fit(buf, "{}", .{cf.ss});
+            }
+
+            fn fr_time_rem(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+                const cf = row.cf orelse return buf[0..0];
+                const rem = cf.rem orelse return buf[0..0];
+                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
+                return fit(buf, "{e:.2}", .{rem});
             }
         };
 
-        self.columns = root.gpa.create([6]Column) catch unreachable;
+        self.columns = root.gpa.create([29]Column) catch unreachable;
         self.columns.?.* = .{
-            .init("Frame", "99999", .right, null, Format.frame),
-            .init("Time", "0.000", .left, Customize.time, Format.time),
-            .init("Ms", "99", .right, Customize.ms, Format.ms),
-            .init("Speed", "9999.999", .right, null, Format.speed),
-            .init("Vel. Yaw", "999.999", .right, null, Format.vel_yaw),
-            .init("Vert. Speed", "-9999.9", .right, Customize.vert_speed, Format.vert_speed),
+            .init("Frame", "99999", .right, Bind.frame),
+            .init("Time", "0.000", .left, Bind.time),
+            .init("Ms", "99", .right, Bind.ms),
+            .init("Speed", "9999.999", .right, Bind.speed),
+            .init("Vel. Yaw", "999.999", .right, Bind.vel_yaw),
+            .init("Vert. Speed", "-9999.9", .right, Bind.vert_speed),
+            .init("G", "F", .left, Bind.G),
+            .init("K", "F", .left, Bind.K),
+            .init("L", "F", .left, Bind.L),
+            .init("W", "F", .left, Bind.W),
+            .init("J", "F", .left, Bind.J),
+            .init("D", "F", .left, Bind.D),
+            .init("F", "F", .left, Bind.F),
+            .init("S", "F", .left, Bind.S),
+            .init("U", "F", .left, Bind.U),
+            .init("Yaw", "-999.999", .right, Bind.yaw),
+            .init("Pitch", "-999.999", .right, Bind.pitch),
+            .init("Health", "999", .right, Bind.health),
+            .init("Armor", "999.9", .right, Bind.armor),
+            .init("E", "F", .left, Bind.E),
+            .init("1", "F", .left, Bind.A1),
+            .init("2", "F", .left, Bind.A2),
+            .init("R", "F", .left, Bind.R),
+            .init("CL State", "9", .center, Bind.cl_state),
+            .init("Z Position", "-9999.999", .right, Bind.z_pos),
+            .init("X Position", "-9999.999", .right, Bind.x_pos),
+            .init("Y Position", "-9999.999", .right, Bind.y_pos),
+            .init("Sh. Seed", "99999", .right, Bind.sh_seed),
+            .init("Fr. Time Rem.", "9.99e-9", .right, Bind.fr_time_rem),
         };
 
         c.gtk_widget_add_css_class(self.as(c.GtkWidget), "view");
@@ -572,8 +743,12 @@ pub const TlrTable = extern struct {
 
         const self = downcast(widget.?);
 
+        // var total_w: i32 = 0;
+        // var header_h: i32 = 0;
         var row_h: i32 = 0;
         for (self.columns.?) |*column| {
+            // total_w += column.width() + x_padding * 2;
+            // header_h = @max(header_h, column.header_layout.?.h);
             row_h = @max(row_h, column.template_layout.?.h);
         }
         row_h = row_h + y_padding * 2;
@@ -638,19 +813,20 @@ pub const TlrTable = extern struct {
                             .cf = log_row.cf,
                         };
 
-                        const text = column.format(&buf, row);
-                        c.pango_layout_set_text(layout, text.ptr, @intCast(text.len));
-
                         const attrs = c.pango_attr_list_new().?;
                         defer c.pango_attr_list_unref(attrs);
                         c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
-                        if (column.customize) |f| f(attrs, row);
+
+                        const text = column.bind(&buf, attrs, row);
+                        c.pango_layout_set_text(layout, text.ptr, @intCast(text.len));
                         c.pango_layout_set_attributes(layout, attrs);
                     }
 
                     var w = column_w;
-                    if (column.xalign == .right) {
+                    if (column.xalign != .left) {
                         c.pango_layout_get_pixel_size(layout, &w, null);
+                        if (column.xalign == .center)
+                            w = @divTrunc(column_w + w, 2);
                     }
                     const offset: f32 = @floatFromInt(column_w - w);
                     c.gtk_snapshot_translate(snap, &.{ .x = offset, .y = 0 });
