@@ -17,7 +17,8 @@ const x_padding = 6;
 const y_padding = 3;
 const border_opacity = 0.15;
 
-const BUF = [16]u8;
+const Buf = [16]u8;
+const AttrBuf = [2]?*c.PangoAttribute;
 
 const Log = struct {
     file: Io.File,
@@ -118,10 +119,11 @@ const Column = struct {
     layouts: ArrayList(*c.PangoLayout),
 
     xalign: Align,
+    static_attrs: [2]?*c.PangoAttribute,
     bind: *const BindFn,
     background: *const ColorFn,
 
-    const BindFn = fn (buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8;
+    const BindFn = fn (buf: *Buf, attrs: *AttrBuf, row: Data) []const u8;
     const ColorFn = fn (row: Data) ?c.GdkRGBA;
 
     const Data = struct {
@@ -134,6 +136,7 @@ const Column = struct {
         name: []const u8,
         template: []const u8,
         xalign: Align,
+        static_attrs: ?[2]?*c.PangoAttribute,
         bind: *const BindFn,
         background: ?*const ColorFn,
     ) @This() {
@@ -144,6 +147,7 @@ const Column = struct {
             .template_layout = null,
             .layouts = .empty,
             .xalign = xalign,
+            .static_attrs = static_attrs orelse .{ null, null },
             .bind = bind,
             .background = background orelse transparent,
         };
@@ -157,6 +161,9 @@ const Column = struct {
 
         std.debug.assert(self.layouts.items.len == 0);
         self.layouts.clearAndFree(gpa);
+
+        for (self.static_attrs) |a| if (a) |aa| c.pango_attribute_destroy(aa) else break;
+        self.static_attrs = .{ null, null };
     }
 
     fn destroyLayouts(self: *@This()) void {
@@ -388,28 +395,28 @@ pub const TlrTable = extern struct {
         const Bind = struct {
             const Data = Column.Data;
 
-            fn fit(buf: *BUF, comptime fmt: []const u8, args: anytype) []const u8 {
+            fn fit(buf: *Buf, comptime fmt: []const u8, args: anytype) []const u8 {
                 return std.fmt.bufPrint(buf, fmt, args) catch return buf;
             }
 
-            fn frame(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn frame(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = attrs;
                 return fit(buf, "{}", .{row.n});
             }
 
-            fn time(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn time(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+                _ = attrs;
                 const ft = row.pf.ft orelse return "";
-                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
                 return fit(buf, "{:.3}", .{ft});
             }
 
-            fn ms(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn ms(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+                _ = attrs;
                 const cf = row.cf orelse return "";
-                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
                 return fit(buf, "{}", .{cf.ms});
             }
 
-            fn speed(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn speed(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = attrs;
                 const cf = row.cf orelse return "";
                 const pm = cf.postpm orelse return "";
@@ -420,7 +427,7 @@ pub const TlrTable = extern struct {
                 return fit(buf, "{:.3}", .{math.hypot(vel[0], vel[1])});
             }
 
-            fn vel_yaw(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn vel_yaw(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = attrs;
                 const cf = row.cf orelse return "";
                 const pm = cf.postpm orelse return "";
@@ -431,7 +438,7 @@ pub const TlrTable = extern struct {
                 return fit(buf, "{:.3}", .{math.atan2(vel[1], vel[0]) * math.deg_per_rad});
             }
 
-            fn vert_speed(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn vert_speed(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 const cf = row.cf orelse return "";
                 const pm = cf.postpm orelse return "";
 
@@ -439,186 +446,185 @@ pub const TlrTable = extern struct {
                 if (z == 0) return "";
 
                 if (z > 0) {
-                    c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(0x1c * 257, 0x71 * 257, 0xd8 * 257));
+                    attrs[0] = c.pango_attr_foreground_new(0x1c * 257, 0x71 * 257, 0xd8 * 257);
                 } else {
-                    c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(0xed * 257, 0x33 * 257, 0x3b * 257));
+                    attrs[0] = c.pango_attr_foreground_new(0xed * 257, 0x33 * 257, 0x3b * 257);
                 }
 
                 return fit(buf, "{:.1}", .{z});
             }
 
-            fn G(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn G(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
                 _ = attrs;
                 _ = row;
                 return "";
             }
 
-            fn K(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn K(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
                 _ = attrs;
                 _ = row;
                 return "";
             }
 
-            fn L(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn L(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
                 _ = attrs;
                 _ = row;
                 return "";
             }
 
-            fn W(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn W(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
                 _ = attrs;
                 _ = row;
                 return "";
             }
 
-            fn J(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn J(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
                 _ = attrs;
                 _ = row;
                 return "";
             }
 
-            fn D(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn D(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
                 _ = attrs;
                 _ = row;
                 return "";
             }
 
-            fn F(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn F(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
+                _ = attrs;
                 const cf = row.cf orelse return "";
 
                 const x = cf.fsu[0];
                 if (x == 0) return "";
 
-                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(65535, 65535, 65535));
-                c.pango_attr_list_insert(attrs, c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD));
                 return if (x > 0) "F" else "B";
             }
 
-            fn S(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn S(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
+                _ = attrs;
                 const cf = row.cf orelse return "";
 
                 const x = cf.fsu[1];
                 if (x == 0) return "";
 
-                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(65535, 65535, 65535));
-                c.pango_attr_list_insert(attrs, c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD));
                 return if (x > 0) "R" else "L";
             }
 
-            fn U(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn U(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
+                _ = attrs;
                 const cf = row.cf orelse return "";
 
                 const x = cf.fsu[2];
                 if (x == 0) return "";
 
-                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(65535, 65535, 65535));
-                c.pango_attr_list_insert(attrs, c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD));
                 return if (x > 0) "U" else "D";
             }
 
-            fn yaw(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn yaw(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = attrs;
                 const cf = row.cf orelse return "";
                 return fit(buf, "{:.3}", .{cf.view[0]});
             }
 
-            fn pitch(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn pitch(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = attrs;
                 const cf = row.cf orelse return "";
                 return fit(buf, "{:.3}", .{cf.view[1]});
             }
 
-            fn health(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn health(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = attrs;
                 const cf = row.cf orelse return "";
                 const hp = cf.hp orelse return "";
                 return fit(buf, "{:.0}", .{hp});
             }
 
-            fn armor(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn armor(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = attrs;
                 const cf = row.cf orelse return "";
                 const ap = cf.ap orelse return "";
                 return fit(buf, "{:.1}", .{ap});
             }
 
-            fn E(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn E(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
                 _ = attrs;
                 _ = row;
                 return "";
             }
 
-            fn A1(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn A1(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
                 _ = attrs;
                 _ = row;
                 return "";
             }
 
-            fn A2(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn A2(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
                 _ = attrs;
                 _ = row;
                 return "";
             }
 
-            fn R(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn R(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = buf;
                 _ = attrs;
                 _ = row;
                 return "";
             }
 
-            fn cl_state(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
-                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
+            fn cl_state(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 if (row.pf.cls != 5) {
-                    c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(0xed * 257, 0x33 * 257, 0x3b * 257));
-                    c.pango_attr_list_insert(attrs, c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD));
+                    attrs[0] = c.pango_attr_foreground_new(0xed * 257, 0x33 * 257, 0x3b * 257);
+                    attrs[1] = c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD);
+                } else {
+                    // Signal to reset.
+                    attrs[0] = null;
                 }
                 return fit(buf, "{}", .{row.pf.cls});
             }
 
-            fn z_pos(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn z_pos(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = attrs;
                 const cf = row.cf orelse return "";
                 const pm = cf.postpm orelse return "";
                 return fit(buf, "{:.3}", .{pm.pos[2]});
             }
 
-            fn x_pos(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn x_pos(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = attrs;
                 const cf = row.cf orelse return "";
                 const pm = cf.postpm orelse return "";
                 return fit(buf, "{:.3}", .{pm.pos[0]});
             }
 
-            fn y_pos(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn y_pos(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
                 _ = attrs;
                 const cf = row.cf orelse return "";
                 const pm = cf.postpm orelse return "";
                 return fit(buf, "{:.3}", .{pm.pos[1]});
             }
 
-            fn sh_seed(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn sh_seed(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+                _ = attrs;
                 const cf = row.cf orelse return "";
-                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
                 return fit(buf, "{}", .{cf.ss});
             }
 
-            fn fr_time_rem(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+            fn fr_time_rem(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+                _ = attrs;
                 const cf = row.cf orelse return "";
                 const rem = cf.rem orelse return "";
-                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
                 return fit(buf, "{e:.2}", .{rem});
             }
         };
@@ -727,35 +733,35 @@ pub const TlrTable = extern struct {
 
         self.columns = root.gpa.create([29]Column) catch unreachable;
         self.columns.?.* = .{
-            .init("Frame", "99999", .right, Bind.frame, null),
-            .init("Time", "0.000", .left, Bind.time, null),
-            .init("Ms", "99", .right, Bind.ms, null),
-            .init("Speed", "9999.999", .right, Bind.speed, null),
-            .init("Vel. Yaw", "-999.999", .right, Bind.vel_yaw, null),
-            .init("Vert. Speed", "-9999.9", .right, Bind.vert_speed, null),
-            .init("G", "W", .left, Bind.G, Background.G),
-            .init("K", "W", .left, Bind.K, Background.K),
-            .init("L", "W", .left, Bind.L, Background.L),
-            .init("W", "W", .left, Bind.W, Background.W),
-            .init("J", "W", .left, Bind.J, Background.J),
-            .init("D", "W", .left, Bind.D, Background.D),
-            .init("F", "W", .center, Bind.F, Background.F),
-            .init("S", "W", .center, Bind.S, Background.S),
-            .init("U", "W", .center, Bind.U, Background.U),
-            .init("Yaw", "-999.999", .right, Bind.yaw, null),
-            .init("Pitch", "-999.999", .right, Bind.pitch, null),
-            .init("Health", "999", .right, Bind.health, null),
-            .init("Armor", "999.9", .right, Bind.armor, null),
-            .init("E", "W", .left, Bind.E, Background.E),
-            .init("1", "W", .left, Bind.A1, Background.A1),
-            .init("2", "W", .left, Bind.A2, Background.A2),
-            .init("R", "W", .left, Bind.R, Background.R),
-            .init("CL State", "9", .center, Bind.cl_state, null),
-            .init("Z Position", "-9999.999", .right, Bind.z_pos, null),
-            .init("X Position", "-9999.999", .right, Bind.x_pos, null),
-            .init("Y Position", "-9999.999", .right, Bind.y_pos, null),
-            .init("Sh. Seed", "99999", .right, Bind.sh_seed, null),
-            .init("Fr. Time Rem.", "9.99e-9", .right, Bind.fr_time_rem, null),
+            .init("Frame", "99999", .right, null, Bind.frame, null),
+            .init("Time", "0.000", .left, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.time, null),
+            .init("Ms", "99", .right, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.ms, null),
+            .init("Speed", "9999.999", .right, null, Bind.speed, null),
+            .init("Vel. Yaw", "-999.999", .right, null, Bind.vel_yaw, null),
+            .init("Vert. Speed", "-9999.9", .right, null, Bind.vert_speed, null),
+            .init("G", "W", .left, null, Bind.G, Background.G),
+            .init("K", "W", .left, null, Bind.K, Background.K),
+            .init("L", "W", .left, null, Bind.L, Background.L),
+            .init("W", "W", .left, null, Bind.W, Background.W),
+            .init("J", "W", .left, null, Bind.J, Background.J),
+            .init("D", "W", .left, null, Bind.D, Background.D),
+            .init("F", "W", .center, .{ c.pango_attr_foreground_new(65535, 65535, 65535), c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD) }, Bind.F, Background.F),
+            .init("S", "W", .center, .{ c.pango_attr_foreground_new(65535, 65535, 65535), c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD) }, Bind.S, Background.S),
+            .init("U", "W", .center, .{ c.pango_attr_foreground_new(65535, 65535, 65535), c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD) }, Bind.U, Background.U),
+            .init("Yaw", "-999.999", .right, null, Bind.yaw, null),
+            .init("Pitch", "-999.999", .right, null, Bind.pitch, null),
+            .init("Health", "999", .right, null, Bind.health, null),
+            .init("Armor", "999.9", .right, null, Bind.armor, null),
+            .init("E", "W", .left, null, Bind.E, Background.E),
+            .init("1", "W", .left, null, Bind.A1, Background.A1),
+            .init("2", "W", .left, null, Bind.A2, Background.A2),
+            .init("R", "W", .left, null, Bind.R, Background.R),
+            .init("CL State", "9", .center, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.cl_state, null),
+            .init("Z Position", "-9999.999", .right, null, Bind.z_pos, null),
+            .init("X Position", "-9999.999", .right, null, Bind.x_pos, null),
+            .init("Y Position", "-9999.999", .right, null, Bind.y_pos, null),
+            .init("Sh. Seed", "99999", .right, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.sh_seed, null),
+            .init("Fr. Time Rem.", "9.99e-9", .right, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.fr_time_rem, null),
         };
 
         c.gtk_widget_add_css_class(self.as(c.GtkWidget), "view");
@@ -944,6 +950,16 @@ pub const TlrTable = extern struct {
                 while (h < full_height and n + first_row < log.rows.items.len) {
                     if (column.layouts.items.len <= n) {
                         const layout = c.gtk_widget_create_pango_layout(widget, null).?;
+
+                        // We don't know here if the column uses dynamic attrs; in case it doesn't, set here.
+                        const attrs = c.pango_attr_list_new().?;
+                        c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
+                        for (column.static_attrs) |a| if (a) |aa| {
+                            c.pango_attr_list_insert(attrs, c.pango_attribute_copy(aa));
+                        } else break;
+                        c.pango_layout_set_attributes(layout, attrs);
+                        c.pango_attr_list_unref(attrs);
+
                         column.layouts.append(root.gpa, layout) catch unreachable;
                     }
                     const layout = column.layouts.items[n];
@@ -956,12 +972,10 @@ pub const TlrTable = extern struct {
                     };
 
                     if (n >= format_from) {
-                        const attrs = c.pango_attr_list_new().?;
-                        defer c.pango_attr_list_unref(attrs);
-                        c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
-
-                        var buf: BUF = undefined;
-                        const text = column.bind(&buf, attrs, row);
+                        var buf: Buf = undefined;
+                        // 8 is a marker that the column does not need to reset attrs.
+                        var attr_buf: AttrBuf = .{ @ptrFromInt(8), null };
+                        const text = column.bind(&buf, &attr_buf, row);
 
                         // Avoid reformatting if text matches.
                         //
@@ -969,7 +983,18 @@ pub const TlrTable = extern struct {
                         const prev: [*:0]const u8 = c.pango_layout_get_text(layout);
                         if (!std.mem.eql(u8, text, std.mem.span(prev))) {
                             c.pango_layout_set_text(layout, text.ptr, @intCast(text.len));
-                            c.pango_layout_set_attributes(layout, attrs);
+
+                            // If it's null we still want to reset the attributes to fresh ones.
+                            if (@intFromPtr(attr_buf[0]) != 8) {
+                                const attrs = c.pango_attr_list_new().?;
+                                c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
+                                for (column.static_attrs) |a| if (a) |aa| {
+                                    c.pango_attr_list_insert(attrs, c.pango_attribute_copy(aa));
+                                } else break;
+                                for (attr_buf) |a| if (a) |aa| c.pango_attr_list_insert(attrs, aa) else break;
+                                c.pango_layout_set_attributes(layout, attrs);
+                                c.pango_attr_list_unref(attrs);
+                            }
 
                             // Force Pango to lay out our string here.
                             //
@@ -978,6 +1003,8 @@ pub const TlrTable = extern struct {
                             // (conditional) get_pixel_size() and (unconditional)
                             // append_layout() below.
                             _ = c.pango_layout_get_lines_readonly(layout);
+                        } else if (@intFromPtr(attr_buf[0]) > 8) {
+                            for (attr_buf) |a| if (a) |aa| c.pango_attribute_destroy(aa) else break;
                         }
                     }
 
