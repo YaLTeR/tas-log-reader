@@ -15,6 +15,9 @@ const TasLog = tas_log_reader.TasLog;
 const dimmed = 36045;
 const x_padding = 6;
 const y_padding = 3;
+const border_opacity = 0.15;
+
+const BUF = [16]u8;
 
 const Log = struct {
     file: Io.File,
@@ -51,6 +54,8 @@ const Log = struct {
             .rows = .empty,
         };
         try self.log.parse(gpa, mmap.memory);
+
+        // self.log.pf.shrinkRetainingCapacity(50);
 
         errdefer self.log.deinit();
         errdefer self.rows.deinit(gpa);
@@ -98,6 +103,11 @@ const SizedLayout = struct {
 
 const Align = enum { left, center, right };
 
+fn transparent(row: Column.Data) ?c.GdkRGBA {
+    _ = row;
+    return null;
+}
+
 const Column = struct {
     name: []const u8,
     template: []const u8, // Template string for measuring the size.
@@ -109,8 +119,10 @@ const Column = struct {
 
     xalign: Align,
     bind: *const BindFn,
+    background: *const ColorFn,
 
-    const BindFn = fn (buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8;
+    const BindFn = fn (buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8;
+    const ColorFn = fn (row: Data) ?c.GdkRGBA;
 
     const Data = struct {
         n: usize,
@@ -123,6 +135,7 @@ const Column = struct {
         template: []const u8,
         xalign: Align,
         bind: *const BindFn,
+        background: ?*const ColorFn,
     ) @This() {
         return .{
             .name = name,
@@ -132,6 +145,7 @@ const Column = struct {
             .layouts = .empty,
             .xalign = xalign,
             .bind = bind,
+            .background = background orelse transparent,
         };
     }
 
@@ -374,55 +388,55 @@ pub const TlrTable = extern struct {
         const Bind = struct {
             const Data = Column.Data;
 
-            fn fit(buf: []u8, comptime fmt: []const u8, args: anytype) []u8 {
+            fn fit(buf: *BUF, comptime fmt: []const u8, args: anytype) []const u8 {
                 return std.fmt.bufPrint(buf, fmt, args) catch return buf;
             }
 
-            fn frame(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn frame(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 _ = attrs;
                 return fit(buf, "{}", .{row.n});
             }
 
-            fn time(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
-                const ft = row.pf.ft orelse return buf[0..0];
+            fn time(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                const ft = row.pf.ft orelse return "";
                 c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
                 return fit(buf, "{:.3}", .{ft});
             }
 
-            fn ms(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
-                const cf = row.cf orelse return buf[0..0];
+            fn ms(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                const cf = row.cf orelse return "";
                 c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
                 return fit(buf, "{}", .{cf.ms});
             }
 
-            fn speed(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn speed(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
-                const pm = cf.postpm orelse return buf[0..0];
+                const cf = row.cf orelse return "";
+                const pm = cf.postpm orelse return "";
 
                 const vel = pm.vel;
-                if (vel[0] == 0 and vel[1] == 0) return buf[0..0];
+                if (vel[0] == 0 and vel[1] == 0) return "";
 
                 return fit(buf, "{:.3}", .{math.hypot(vel[0], vel[1])});
             }
 
-            fn vel_yaw(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn vel_yaw(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
-                const pm = cf.postpm orelse return buf[0..0];
+                const cf = row.cf orelse return "";
+                const pm = cf.postpm orelse return "";
 
                 const vel = pm.vel;
-                if (vel[0] == 0 and vel[1] == 0) return buf[0..0];
+                if (vel[0] == 0 and vel[1] == 0) return "";
 
                 return fit(buf, "{:.3}", .{math.atan2(vel[1], vel[0]) * math.deg_per_rad});
             }
 
-            fn vert_speed(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
-                const cf = row.cf orelse return buf[0..0];
-                const pm = cf.postpm orelse return buf[0..0];
+            fn vert_speed(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                const cf = row.cf orelse return "";
+                const pm = cf.postpm orelse return "";
 
                 const z = pm.vel[2];
-                if (z == 0) return buf[0..0];
+                if (z == 0) return "";
 
                 if (z > 0) {
                     c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(0x1c * 257, 0x71 * 257, 0xd8 * 257));
@@ -433,209 +447,337 @@ pub const TlrTable = extern struct {
                 return fit(buf, "{:.1}", .{z});
             }
 
-            fn G(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn G(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
                 _ = attrs;
                 _ = row;
-                return buf[0..0];
+                return "";
             }
 
-            fn K(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn K(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
                 _ = attrs;
                 _ = row;
-                return buf[0..0];
+                return "";
             }
 
-            fn L(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn L(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
                 _ = attrs;
                 _ = row;
-                return buf[0..0];
+                return "";
             }
 
-            fn W(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn W(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
                 _ = attrs;
                 _ = row;
-                return buf[0..0];
+                return "";
             }
 
-            fn J(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn J(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
                 _ = attrs;
                 _ = row;
-                return buf[0..0];
+                return "";
             }
 
-            fn D(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn D(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
                 _ = attrs;
                 _ = row;
-                return buf[0..0];
+                return "";
             }
 
-            fn F(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
-                _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
+            fn F(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
+                const cf = row.cf orelse return "";
 
                 const x = cf.fsu[0];
-                if (x == 0) return buf[0..0];
+                if (x == 0) return "";
 
-                if (x > 0) {
-                    return fit(buf, "F", .{});
-                } else {
-                    return fit(buf, "B", .{});
-                }
+                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(65535, 65535, 65535));
+                c.pango_attr_list_insert(attrs, c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD));
+                return if (x > 0) "F" else "B";
             }
 
-            fn S(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
-                _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
+            fn S(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
+                const cf = row.cf orelse return "";
 
                 const x = cf.fsu[1];
-                if (x == 0) return buf[0..0];
+                if (x == 0) return "";
 
-                if (x > 0) {
-                    return fit(buf, "R", .{});
-                } else {
-                    return fit(buf, "L", .{});
-                }
+                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(65535, 65535, 65535));
+                c.pango_attr_list_insert(attrs, c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD));
+                return if (x > 0) "R" else "L";
             }
 
-            fn U(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
-                _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
+            fn U(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
+                const cf = row.cf orelse return "";
 
                 const x = cf.fsu[2];
-                if (x == 0) return buf[0..0];
+                if (x == 0) return "";
 
-                if (x > 0) {
-                    return fit(buf, "U", .{});
-                } else {
-                    return fit(buf, "D", .{});
-                }
+                c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(65535, 65535, 65535));
+                c.pango_attr_list_insert(attrs, c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD));
+                return if (x > 0) "U" else "D";
             }
 
-            fn yaw(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn yaw(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
+                const cf = row.cf orelse return "";
                 return fit(buf, "{:.3}", .{cf.view[0]});
             }
 
-            fn pitch(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn pitch(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
+                const cf = row.cf orelse return "";
                 return fit(buf, "{:.3}", .{cf.view[1]});
             }
 
-            fn health(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn health(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
-                const hp = cf.hp orelse return buf[0..0];
+                const cf = row.cf orelse return "";
+                const hp = cf.hp orelse return "";
                 return fit(buf, "{:.0}", .{hp});
             }
 
-            fn armor(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn armor(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
-                const ap = cf.ap orelse return buf[0..0];
+                const cf = row.cf orelse return "";
+                const ap = cf.ap orelse return "";
                 return fit(buf, "{:.1}", .{ap});
             }
 
-            fn E(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn E(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
                 _ = attrs;
                 _ = row;
-                return buf[0..0];
+                return "";
             }
 
-            fn A1(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn A1(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
                 _ = attrs;
                 _ = row;
-                return buf[0..0];
+                return "";
             }
 
-            fn A2(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn A2(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
                 _ = attrs;
                 _ = row;
-                return buf[0..0];
+                return "";
             }
 
-            fn R(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn R(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                _ = buf;
                 _ = attrs;
                 _ = row;
-                return buf[0..0];
+                return "";
             }
 
-            fn cl_state(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn cl_state(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
+                if (row.pf.cls != 5) {
+                    c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(0xed * 257, 0x33 * 257, 0x3b * 257));
+                    c.pango_attr_list_insert(attrs, c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD));
+                }
                 return fit(buf, "{}", .{row.pf.cls});
             }
 
-            fn z_pos(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn z_pos(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
-                const pm = cf.postpm orelse return buf[0..0];
+                const cf = row.cf orelse return "";
+                const pm = cf.postpm orelse return "";
                 return fit(buf, "{:.3}", .{pm.pos[2]});
             }
 
-            fn x_pos(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn x_pos(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
-                const pm = cf.postpm orelse return buf[0..0];
+                const cf = row.cf orelse return "";
+                const pm = cf.postpm orelse return "";
                 return fit(buf, "{:.3}", .{pm.pos[0]});
             }
 
-            fn y_pos(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
+            fn y_pos(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
                 _ = attrs;
-                const cf = row.cf orelse return buf[0..0];
-                const pm = cf.postpm orelse return buf[0..0];
+                const cf = row.cf orelse return "";
+                const pm = cf.postpm orelse return "";
                 return fit(buf, "{:.3}", .{pm.pos[1]});
             }
 
-            fn sh_seed(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
-                const cf = row.cf orelse return buf[0..0];
+            fn sh_seed(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                const cf = row.cf orelse return "";
                 c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
                 return fit(buf, "{}", .{cf.ss});
             }
 
-            fn fr_time_rem(buf: []u8, attrs: *c.PangoAttrList, row: Data) []u8 {
-                const cf = row.cf orelse return buf[0..0];
-                const rem = cf.rem orelse return buf[0..0];
+            fn fr_time_rem(buf: *BUF, attrs: *c.PangoAttrList, row: Data) []const u8 {
+                const cf = row.cf orelse return "";
+                const rem = cf.rem orelse return "";
                 c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
                 return fit(buf, "{e:.2}", .{rem});
             }
         };
 
+        const Background = struct {
+            const Data = Column.Data;
+
+            fn rgba(hex: u32) c.GdkRGBA {
+                return .{
+                    .red = @as(f32, @floatFromInt(hex >> 16)) / 255,
+                    .green = @as(f32, @floatFromInt((hex >> 8) & 0xFF)) / 255,
+                    .blue = @as(f32, @floatFromInt(hex & 0xFF)) / 255,
+                    .alpha = 1,
+                };
+            }
+
+            fn G(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const pm = cf.postpm orelse return null;
+                return if (pm.og) rgba(0x2ec27e) else null;
+            }
+
+            fn K(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const pm = cf.postpm orelse return null;
+                return switch (pm.dst) {
+                    1 => rgba(0x77767b),
+                    2 => rgba(0x241f31),
+                    else => null,
+                };
+            }
+
+            fn L(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const pm = cf.postpm orelse return null;
+                return if (pm.ol) rgba(0x865e3c) else null;
+            }
+
+            fn W(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const pm = cf.postpm orelse return null;
+                return switch (pm.wlvl) {
+                    1 => rgba(0x62a0ea),
+                    2 => rgba(0x1a5fb4),
+                    else => null,
+                };
+            }
+
+            fn J(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const down = (cf.btns & (1 << 1)) > 0;
+                return if (down) rgba(0xf5c211) else null;
+            }
+
+            fn D(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const down = (cf.btns & (1 << 2)) > 0;
+                return if (down) rgba(0xdc8add) else null;
+            }
+
+            fn F(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const x = cf.fsu[0];
+                if (x == 0) return null;
+                return if (x > 0) rgba(0x3584e4) else rgba(0xed333b);
+            }
+
+            fn S(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const x = cf.fsu[1];
+                if (x == 0) return null;
+                return if (x > 0) rgba(0x3584e4) else rgba(0xed333b);
+            }
+
+            fn U(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const x = cf.fsu[2];
+                if (x == 0) return null;
+                return if (x > 0) rgba(0x3584e4) else rgba(0xed333b);
+            }
+
+            fn E(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const down = (cf.btns & (1 << 5)) > 0;
+                return if (down) rgba(0xf5c211) else null;
+            }
+
+            fn A1(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const down = (cf.btns & (1 << 0)) > 0;
+                return if (down) rgba(0xf5c211) else null;
+            }
+
+            fn A2(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const down = (cf.btns & (1 << 11)) > 0;
+                return if (down) rgba(0xf5c211) else null;
+            }
+
+            fn R(row: Data) ?c.GdkRGBA {
+                const cf = row.cf orelse return null;
+                const down = (cf.btns & (1 << 13)) > 0;
+                return if (down) rgba(0xf5c211) else null;
+            }
+        };
+
         self.columns = root.gpa.create([29]Column) catch unreachable;
         self.columns.?.* = .{
-            .init("Frame", "99999", .right, Bind.frame),
-            .init("Time", "0.000", .left, Bind.time),
-            .init("Ms", "99", .right, Bind.ms),
-            .init("Speed", "9999.999", .right, Bind.speed),
-            .init("Vel. Yaw", "999.999", .right, Bind.vel_yaw),
-            .init("Vert. Speed", "-9999.9", .right, Bind.vert_speed),
-            .init("G", "F", .left, Bind.G),
-            .init("K", "F", .left, Bind.K),
-            .init("L", "F", .left, Bind.L),
-            .init("W", "F", .left, Bind.W),
-            .init("J", "F", .left, Bind.J),
-            .init("D", "F", .left, Bind.D),
-            .init("F", "F", .left, Bind.F),
-            .init("S", "F", .left, Bind.S),
-            .init("U", "F", .left, Bind.U),
-            .init("Yaw", "-999.999", .right, Bind.yaw),
-            .init("Pitch", "-999.999", .right, Bind.pitch),
-            .init("Health", "999", .right, Bind.health),
-            .init("Armor", "999.9", .right, Bind.armor),
-            .init("E", "F", .left, Bind.E),
-            .init("1", "F", .left, Bind.A1),
-            .init("2", "F", .left, Bind.A2),
-            .init("R", "F", .left, Bind.R),
-            .init("CL State", "9", .center, Bind.cl_state),
-            .init("Z Position", "-9999.999", .right, Bind.z_pos),
-            .init("X Position", "-9999.999", .right, Bind.x_pos),
-            .init("Y Position", "-9999.999", .right, Bind.y_pos),
-            .init("Sh. Seed", "99999", .right, Bind.sh_seed),
-            .init("Fr. Time Rem.", "9.99e-9", .right, Bind.fr_time_rem),
+            .init("Frame", "99999", .right, Bind.frame, null),
+            .init("Time", "0.000", .left, Bind.time, null),
+            .init("Ms", "99", .right, Bind.ms, null),
+            .init("Speed", "9999.999", .right, Bind.speed, null),
+            .init("Vel. Yaw", "-999.999", .right, Bind.vel_yaw, null),
+            .init("Vert. Speed", "-9999.9", .right, Bind.vert_speed, null),
+            .init("G", "W", .left, Bind.G, Background.G),
+            .init("K", "W", .left, Bind.K, Background.K),
+            .init("L", "W", .left, Bind.L, Background.L),
+            .init("W", "W", .left, Bind.W, Background.W),
+            .init("J", "W", .left, Bind.J, Background.J),
+            .init("D", "W", .left, Bind.D, Background.D),
+            .init("F", "W", .center, Bind.F, Background.F),
+            .init("S", "W", .center, Bind.S, Background.S),
+            .init("U", "W", .center, Bind.U, Background.U),
+            .init("Yaw", "-999.999", .right, Bind.yaw, null),
+            .init("Pitch", "-999.999", .right, Bind.pitch, null),
+            .init("Health", "999", .right, Bind.health, null),
+            .init("Armor", "999.9", .right, Bind.armor, null),
+            .init("E", "W", .left, Bind.E, Background.E),
+            .init("1", "W", .left, Bind.A1, Background.A1),
+            .init("2", "W", .left, Bind.A2, Background.A2),
+            .init("R", "W", .left, Bind.R, Background.R),
+            .init("CL State", "9", .center, Bind.cl_state, null),
+            .init("Z Position", "-9999.999", .right, Bind.z_pos, null),
+            .init("X Position", "-9999.999", .right, Bind.x_pos, null),
+            .init("Y Position", "-9999.999", .right, Bind.y_pos, null),
+            .init("Sh. Seed", "99999", .right, Bind.sh_seed, null),
+            .init("Fr. Time Rem.", "9.99e-9", .right, Bind.fr_time_rem, null),
         };
 
         c.gtk_widget_add_css_class(self.as(c.GtkWidget), "view");
         c.gtk_widget_set_overflow(self.as(c.GtkWidget), c.GTK_OVERFLOW_HIDDEN);
+    }
+
+    fn get_border(scrollable: ?*c.GtkScrollable, border: ?*c.GtkBorder) callconv(.c) c_int {
+        const zone = Tracy.zoneN(@src(), "TlrTable::get_border");
+        defer zone.end();
+
+        const self: *Self = @ptrCast(@alignCast(scrollable.?));
+
+        var header_h: i32 = 0;
+        for (self.columns.?) |*column| {
+            // This is called before measure...
+            column.ensureSizingLayouts(self.as(c.GtkWidget));
+
+            header_h = @max(header_h, column.header_layout.?.h);
+        }
+        border.?.*.top = @intCast(header_h + y_padding * 2);
+
+        return 1;
     }
 
     fn measure(
@@ -655,25 +797,27 @@ pub const TlrTable = extern struct {
         _ = min_baseline;
         _ = nat_baseline;
 
-        var w: i32 = 0;
+        var total_w: i32 = 0;
         var h: i32 = 0;
         var header_h: i32 = 0;
         var row_h: i32 = 0;
 
-        for (self.columns.?) |*column| {
+        for (0.., self.columns.?) |i, *column| {
             column.ensureSizingLayouts(widget.?);
 
-            w += column.width() + x_padding * 2;
+            if (i > 0) total_w += 1; // Border.
+            total_w += column.width() + x_padding * 2;
             header_h = @max(header_h, column.header_layout.?.h);
             row_h = @max(row_h, column.template_layout.?.h);
         }
+        header_h += 1; // Border.
         const n_rows: i32 = if (self.log) |log| @intCast(log.rows.items.len) else 0;
         h = header_h + row_h * n_rows + y_padding * 2 * (n_rows + 1);
 
         switch (orientation) {
             c.GTK_ORIENTATION_HORIZONTAL => {
-                min.?.* = w;
-                nat.?.* = w;
+                min.?.* = total_w;
+                nat.?.* = total_w;
             },
             c.GTK_ORIENTATION_VERTICAL => {
                 min.?.* = h;
@@ -695,16 +839,18 @@ pub const TlrTable = extern struct {
         const self = downcast(widget.?);
         _ = baseline;
 
-        var w: i32 = 0;
+        var total_w: i32 = 0;
         var h: i32 = 0;
         var header_h: i32 = 0;
         var row_h: i32 = 0;
 
-        for (self.columns.?) |*column| {
-            w += column.width() + x_padding * 2;
+        for (0.., self.columns.?) |i, *column| {
+            if (i > 0) total_w += 1; // Border.
+            total_w += column.width() + x_padding * 2;
             header_h = @max(header_h, column.header_layout.?.h);
             row_h = @max(row_h, column.template_layout.?.h);
         }
+        header_h += 1; // Border.
         const n_rows: i32 = if (self.log) |log| @intCast(log.rows.items.len) else 0;
         h = (row_h + y_padding * 2) * n_rows;
 
@@ -715,7 +861,7 @@ pub const TlrTable = extern struct {
                 adj,
                 val,
                 0,
-                @max(w, page_size),
+                @max(total_w, page_size),
                 page_size * 0.1,
                 page_size * 0.9,
                 page_size,
@@ -743,20 +889,17 @@ pub const TlrTable = extern struct {
 
         const self = downcast(widget.?);
 
-        // var total_w: i32 = 0;
-        // var header_h: i32 = 0;
+        var total_w: i32 = 0;
+        var header_h: i32 = 0;
         var row_h: i32 = 0;
-        for (self.columns.?) |*column| {
-            // total_w += column.width() + x_padding * 2;
-            // header_h = @max(header_h, column.header_layout.?.h);
+        for (0.., self.columns.?) |i, *column| {
+            if (i > 0) total_w += 1; // Border.
+            total_w += column.width() + x_padding * 2;
+            header_h = @max(header_h, column.header_layout.?.h);
             row_h = @max(row_h, column.template_layout.?.h);
         }
-        row_h = row_h + y_padding * 2;
-
-        const start_y = if (self.vadjustment) |adj| c.gtk_adjustment_get_value(adj) else 0;
-        const start_row = start_y / row_h; // Fractional rows.
-        const y_offset: i32 = @round(-@mod(start_row, 1) * row_h);
-        const first_row: usize = @intFromFloat(start_row);
+        header_h += y_padding * 2 + 1;
+        row_h += y_padding * 2;
 
         c.gtk_snapshot_translate(snap, &.{
             .x = if (self.hadjustment) |adj| @floatCast(-c.gtk_adjustment_get_value(adj)) else 0,
@@ -765,31 +908,33 @@ pub const TlrTable = extern struct {
 
         var color: c.GdkRGBA = undefined;
         c.gtk_widget_get_color(widget, &color);
+        const border_color = c.GdkRGBA{
+            .red = color.red,
+            .green = color.green,
+            .blue = color.blue,
+            .alpha = color.alpha * border_opacity,
+        };
 
         const full_height = c.gtk_widget_get_height(self.as(c.GtkWidget));
 
-        var n: usize = 0;
-        for (self.columns.?) |*column| {
-            const column_w = column.width();
+        // Snapshot the rows.
+        var h: i32 = 0;
+        if (self.log) |log| {
+            const start_y = if (self.vadjustment) |adj| c.gtk_adjustment_get_value(adj) else 0;
+            const start_row = start_y / row_h; // Fractional rows.
+            const y_offset: i32 = @round(-@mod(start_row, 1) * row_h);
+            const first_row: usize = @intFromFloat(start_row);
 
-            var h: i32 = y_padding;
-            const header_off = @divFloor(column_w - column.header_layout.?.w, 2);
-            c.gtk_snapshot_translate(snap, &.{
-                .x = @floatFromInt(x_padding + header_off),
-                .y = y_padding,
-            });
-            c.gtk_snapshot_append_layout(snap, column.header_layout.?.layout, &color);
-            c.gtk_snapshot_translate(snap, &.{
-                .x = @floatFromInt(-header_off),
-                .y = @floatFromInt(column.header_layout.?.h + y_padding * 2),
-            });
-            h += column.header_layout.?.h + y_padding * 2;
+            var n: usize = 0;
+            for (0.., self.columns.?) |i, *column| {
+                const border: i32 = if (i > 0) 1 else 0;
+                const column_w = column.width();
 
-            c.gtk_snapshot_translate(snap, &.{ .x = 0, .y = @floatFromInt(y_offset) });
-            h += y_offset;
-
-            if (self.log) |log| {
-                var buf: [16]u8 = undefined;
+                h = header_h + y_offset;
+                c.gtk_snapshot_translate(snap, &.{
+                    .x = @floatFromInt(border),
+                    .y = @floatFromInt(h),
+                });
 
                 // TODO: avoid reformatting when scrolling slowly.
                 const format_from = if (first_row == self.first_row_is) self.last_row_is - self.first_row_is else 0;
@@ -803,23 +948,42 @@ pub const TlrTable = extern struct {
                     }
                     const layout = column.layouts.items[n];
 
+                    const log_row = log.rows.items[n + first_row];
+                    const row = Column.Data{
+                        .n = n + first_row + 1,
+                        .pf = log_row.pf,
+                        .cf = log_row.cf,
+                    };
+
                     // TODO: avoid reformatting if text matches?
                     // It should be fine for us, whereas pango will always reallocate and recompute layout.
                     if (n >= format_from) {
-                        const log_row = log.rows.items[n + first_row];
-                        const row = Column.Data{
-                            .n = n + first_row + 1,
-                            .pf = log_row.pf,
-                            .cf = log_row.cf,
-                        };
-
                         const attrs = c.pango_attr_list_new().?;
                         defer c.pango_attr_list_unref(attrs);
                         c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
 
+                        var buf: BUF = undefined;
                         const text = column.bind(&buf, attrs, row);
                         c.pango_layout_set_text(layout, text.ptr, @intCast(text.len));
                         c.pango_layout_set_attributes(layout, attrs);
+
+                        // Force Pango to lay out our string here.
+                        //
+                        // Do it so all layout costs in profiling is accounted
+                        // to this line, rather than being spread between the
+                        // (conditional) get_pixel_size() and (unconditional)
+                        // append_layout() below.
+                        _ = c.pango_layout_get_lines_readonly(layout);
+                    }
+
+                    if (column.background(row)) |background| {
+                        c.gtk_snapshot_append_color(snap, &background, &.{
+                            .origin = .{ .x = 0, .y = 0 },
+                            .size = .{
+                                .width = @floatFromInt(column_w + x_padding * 2),
+                                .height = @floatFromInt(row_h),
+                            },
+                        });
                     }
 
                     var w = column_w;
@@ -829,24 +993,51 @@ pub const TlrTable = extern struct {
                             w = @divTrunc(column_w + w, 2);
                     }
                     const offset: f32 = @floatFromInt(column_w - w);
-                    c.gtk_snapshot_translate(snap, &.{ .x = offset, .y = 0 });
+                    c.gtk_snapshot_translate(snap, &.{ .x = x_padding + offset, .y = y_padding });
                     c.gtk_snapshot_append_layout(snap, layout, &color);
-                    c.gtk_snapshot_translate(snap, &.{ .x = -offset, .y = @floatFromInt(row_h) });
+                    c.gtk_snapshot_translate(snap, &.{ .x = -(x_padding + offset), .y = @floatFromInt(row_h - y_padding) });
                     h += row_h;
 
                     n += 1;
                 }
                 // std.log.debug("first row is {}, drew {}", .{ first_row, n });
+
+                c.gtk_snapshot_translate(snap, &.{
+                    .x = @floatFromInt(column_w + x_padding * 2),
+                    .y = @floatFromInt(-h),
+                });
             }
 
-            c.gtk_snapshot_translate(snap, &.{
-                .x = @floatFromInt(column_w + x_padding * 2),
-                .y = @floatFromInt(-h),
-            });
+            c.gtk_snapshot_translate(snap, &.{ .x = @floatFromInt(-total_w), .y = 0 });
+
+            self.first_row_is = first_row;
+            self.last_row_is = first_row + n;
         }
 
-        self.first_row_is = first_row;
-        self.last_row_is = first_row + n;
+        // Snapshot the header and the vertical lines.
+        const style = c.gtk_widget_get_style_context(self.as(c.GtkWidget));
+        c.gtk_snapshot_render_background(snap, style, 0, 0, total_w, header_h);
+        c.gtk_snapshot_append_color(snap, &border_color, &.{
+            .origin = .{ .x = 0, .y = @floatFromInt(header_h - 1) },
+            .size = .{ .width = @floatFromInt(total_w), .height = 1 },
+        });
+
+        const view_height = @min(@max(h, header_h), full_height);
+        for (0.., self.columns.?) |i, column| {
+            const border: i32 = if (i > 0) 1 else 0;
+            if (border == 1) {
+                c.gtk_snapshot_append_color(snap, &border_color, &.{
+                    .origin = .{ .x = 0, .y = 0 },
+                    .size = .{ .width = 1, .height = @floatFromInt(view_height) },
+                });
+            }
+
+            const column_w = column.width();
+            const header_off = @divFloor(column_w - column.header_layout.?.w, 2);
+            c.gtk_snapshot_translate(snap, &.{ .x = @floatFromInt(border + x_padding + header_off), .y = y_padding });
+            c.gtk_snapshot_append_layout(snap, column.header_layout.?.layout, &color);
+            c.gtk_snapshot_translate(snap, &.{ .x = @floatFromInt(-header_off + column_w + x_padding), .y = -y_padding });
+        }
     }
 
     fn unroot(widget: ?*c.GtkWidget) callconv(.c) void {
@@ -916,24 +1107,6 @@ pub const TlrTable = extern struct {
             @intFromEnum(Prop.vscroll_policy) => c.g_value_set_enum(value, @intCast(self.vscroll_policy)),
             else => unreachable,
         }
-    }
-
-    fn get_border(scrollable: ?*c.GtkScrollable, border: ?*c.GtkBorder) callconv(.c) c_int {
-        const zone = Tracy.zoneN(@src(), "TlrTable::get_border");
-        defer zone.end();
-
-        const self: *Self = @ptrCast(@alignCast(scrollable.?));
-
-        var header_h: i32 = 0;
-        for (self.columns.?) |*column| {
-            // This is called before measure...
-            column.ensureSizingLayouts(self.as(c.GtkWidget));
-
-            header_h = @max(header_h, column.header_layout.?.h);
-        }
-        border.?.*.top = @intCast(header_h + y_padding * 2);
-
-        return 1;
     }
 
     pub const Class = extern struct {
