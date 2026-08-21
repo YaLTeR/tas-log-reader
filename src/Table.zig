@@ -955,8 +955,6 @@ pub const TlrTable = extern struct {
                         .cf = log_row.cf,
                     };
 
-                    // TODO: avoid reformatting if text matches?
-                    // It should be fine for us, whereas pango will always reallocate and recompute layout.
                     if (n >= format_from) {
                         const attrs = c.pango_attr_list_new().?;
                         defer c.pango_attr_list_unref(attrs);
@@ -964,16 +962,23 @@ pub const TlrTable = extern struct {
 
                         var buf: BUF = undefined;
                         const text = column.bind(&buf, attrs, row);
-                        c.pango_layout_set_text(layout, text.ptr, @intCast(text.len));
-                        c.pango_layout_set_attributes(layout, attrs);
 
-                        // Force Pango to lay out our string here.
+                        // Avoid reformatting if text matches.
                         //
-                        // Do it so all layout costs in profiling is accounted
-                        // to this line, rather than being spread between the
-                        // (conditional) get_pixel_size() and (unconditional)
-                        // append_layout() below.
-                        _ = c.pango_layout_get_lines_readonly(layout);
+                        // It's fine for us, whereas pango will always reallocate and recompute layout.
+                        const prev: [*:0]const u8 = c.pango_layout_get_text(layout);
+                        if (!std.mem.eql(u8, text, std.mem.span(prev))) {
+                            c.pango_layout_set_text(layout, text.ptr, @intCast(text.len));
+                            c.pango_layout_set_attributes(layout, attrs);
+
+                            // Force Pango to lay out our string here.
+                            //
+                            // Do it so all layout costs in profiling is accounted
+                            // to this line, rather than being spread between the
+                            // (conditional) get_pixel_size() and (unconditional)
+                            // append_layout() below.
+                            _ = c.pango_layout_get_lines_readonly(layout);
+                        }
                     }
 
                     if (column.background(row)) |background| {
