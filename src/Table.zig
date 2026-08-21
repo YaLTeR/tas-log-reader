@@ -812,7 +812,7 @@ pub const TlrTable = extern struct {
         }
         header_h += 1; // Border.
         const n_rows: i32 = if (self.log) |log| @intCast(log.rows.items.len) else 0;
-        h = header_h + row_h * n_rows + y_padding * 2 * (n_rows + 1);
+        h = header_h + row_h * n_rows + y_padding * 2 * (n_rows + 1) + (n_rows - 1);
 
         switch (orientation) {
             c.GTK_ORIENTATION_HORIZONTAL => {
@@ -852,7 +852,7 @@ pub const TlrTable = extern struct {
         }
         header_h += 1; // Border.
         const n_rows: i32 = if (self.log) |log| @intCast(log.rows.items.len) else 0;
-        h = (row_h + y_padding * 2) * n_rows;
+        h = (row_h + y_padding * 2) * n_rows + (n_rows - 1);
 
         if (self.hadjustment) |adj| {
             const val = c.gtk_adjustment_get_value(adj);
@@ -921,8 +921,8 @@ pub const TlrTable = extern struct {
         var h: i32 = 0;
         if (self.log) |log| {
             const start_y = if (self.vadjustment) |adj| c.gtk_adjustment_get_value(adj) else 0;
-            const start_row = start_y / row_h; // Fractional rows.
-            const y_offset: i32 = @round(-@mod(start_row, 1) * row_h);
+            const start_row = start_y / (row_h + 1); // Fractional rows.
+            const y_offset: i32 = @round(-@mod(start_row, 1) * (row_h + 1));
             const first_row: usize = @intFromFloat(start_row);
 
             var n: usize = 0;
@@ -995,8 +995,8 @@ pub const TlrTable = extern struct {
                     const offset: f32 = @floatFromInt(column_w - w);
                     c.gtk_snapshot_translate(snap, &.{ .x = x_padding + offset, .y = y_padding });
                     c.gtk_snapshot_append_layout(snap, layout, &color);
-                    c.gtk_snapshot_translate(snap, &.{ .x = -(x_padding + offset), .y = @floatFromInt(row_h - y_padding) });
-                    h += row_h;
+                    c.gtk_snapshot_translate(snap, &.{ .x = -(x_padding + offset), .y = @floatFromInt(row_h - y_padding + 1) });
+                    h += row_h + 1;
 
                     n += 1;
                 }
@@ -1008,7 +1008,16 @@ pub const TlrTable = extern struct {
                 });
             }
 
+            // Draw horizontal lines.
             c.gtk_snapshot_translate(snap, &.{ .x = @floatFromInt(-total_w), .y = 0 });
+
+            const base = header_h + y_offset - 1;
+            for (1..n) |i| {
+                c.gtk_snapshot_append_color(snap, &border_color, &.{
+                    .origin = .{ .x = 0, .y = @floatFromInt(@as(i32, @intCast(i)) * (row_h + 1) + base) },
+                    .size = .{ .width = @floatFromInt(total_w), .height = @floatFromInt(1) },
+                });
+            }
 
             self.first_row_is = first_row;
             self.last_row_is = first_row + n;
