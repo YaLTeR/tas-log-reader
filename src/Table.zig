@@ -297,13 +297,8 @@ pub const TlrTable = extern struct {
         return g.downcast(object, Self, g_type);
     }
 
-    pub fn new(file: ?*c.GFile) *Self {
-        return @ptrCast(@alignCast(c.g_object_new(
-            Self.g_type,
-            "file",
-            file,
-            @as([*c]const c.gchar, null),
-        )));
+    pub fn new() *Self {
+        return @ptrCast(@alignCast(c.g_object_new(Self.g_type, null)));
     }
 
     pub fn setFile(self: *Self, file: ?*c.GFile) void {
