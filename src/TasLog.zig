@@ -40,12 +40,12 @@ pub const Meta = struct {
                 }
             } else {
                 // Didn't match anything.
-                freeAllocated(allocator, name_token);
-
                 if (std.mem.eql(u8, "pf", field_name)) {
                     // Reached the main array, we're done here.
+                    freeAllocated(allocator, name_token);
                     break;
                 }
+                freeAllocated(allocator, name_token);
 
                 try source.skipValue();
             }

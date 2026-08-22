@@ -157,13 +157,13 @@ const Column = struct {
         std.debug.assert(self.header_layout == null);
         std.debug.assert(self.template_layout == null);
 
+        for (self.static_attrs) |a| if (a) |aa| c.pango_attribute_destroy(aa) else break;
+        self.static_attrs = .{ null, null };
+
         if (self.layouts.capacity == 0) return;
 
         std.debug.assert(self.layouts.items.len == 0);
         self.layouts.clearAndFree(gpa);
-
-        for (self.static_attrs) |a| if (a) |aa| c.pango_attribute_destroy(aa) else break;
-        self.static_attrs = .{ null, null };
     }
 
     fn destroyLayouts(self: *@This()) void {
@@ -313,6 +313,8 @@ pub const TlrTable = extern struct {
         self.clearLog();
         // TODO: no need to destroy header & template here.
         for (self.columns.?) |*column| column.destroyLayouts();
+        self.first_row_is = 0;
+        self.last_row_is = 0;
         c.gtk_widget_queue_resize(self.as(c.GtkWidget));
 
         if (self.file == null) {
@@ -330,12 +332,12 @@ pub const TlrTable = extern struct {
     fn clearAdjustment(self: *Self, adj: *?*c.GtkAdjustment) void {
         if (adj.*) |prev| {
             adj.* = null;
-            _ = g.disconnect_by_func(prev, Self.adjusmentValueChanged, self);
+            _ = g.disconnect_by_func(prev, Self.adjustmentValueChanged, self);
             c.g_object_unref(prev);
         }
     }
 
-    fn adjusmentValueChanged(self: *Self, adj: ?*c.GtkAdjustment) callconv(.c) void {
+    fn adjustmentValueChanged(self: *Self, adj: ?*c.GtkAdjustment) callconv(.c) void {
         _ = adj;
         c.gtk_widget_queue_allocate(self.as(c.GtkWidget));
     }
@@ -349,10 +351,10 @@ pub const TlrTable = extern struct {
 
         if (adj) |p| {
             _ = c.g_object_ref(g.as(c.GObject, p));
-            _ = g.connect_swapped(p, "value-changed", Self.adjusmentValueChanged, self);
+            _ = g.connect_swapped(p, "value-changed", Self.adjustmentValueChanged, self);
         }
 
-        self.adjusmentValueChanged(null);
+        self.adjustmentValueChanged(null);
     }
 
     pub fn setVAdjustment(self: *Self, adj: ?*c.GtkAdjustment) void {
@@ -364,10 +366,10 @@ pub const TlrTable = extern struct {
 
         if (adj) |p| {
             _ = c.g_object_ref(g.as(c.GObject, p));
-            _ = g.connect_swapped(p, "value-changed", Self.adjusmentValueChanged, self);
+            _ = g.connect_swapped(p, "value-changed", Self.adjustmentValueChanged, self);
         }
 
-        self.adjusmentValueChanged(null);
+        self.adjustmentValueChanged(null);
     }
 
     fn parseLog(self: *Self, path: []const u8) !void {
@@ -731,7 +733,7 @@ pub const TlrTable = extern struct {
             }
         };
 
-        self.columns = root.gpa.create([29]Column) catch unreachable;
+        self.columns = root.gpa.create([29]Column) catch @panic("out of memory");
         self.columns.?.* = .{
             .init("Frame", "99999", .right, null, Bind.frame, null),
             .init("Time", "0.000", .left, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.time, null),
@@ -960,7 +962,7 @@ pub const TlrTable = extern struct {
                         c.pango_layout_set_attributes(layout, attrs);
                         c.pango_attr_list_unref(attrs);
 
-                        column.layouts.append(root.gpa, layout) catch unreachable;
+                        column.layouts.append(root.gpa, layout) catch @panic("out of memory");
                     }
                     const layout = column.layouts.items[n];
 
@@ -1084,6 +1086,8 @@ pub const TlrTable = extern struct {
     fn unroot(widget: ?*c.GtkWidget) callconv(.c) void {
         const self = downcast(widget.?);
         for (self.columns.?) |*column| column.destroyLayouts();
+        self.first_row_is = 0;
+        self.last_row_is = 0;
 
         g.as(c.GtkWidgetClass, Class.parent_class).unroot.?(widget);
     }
@@ -1107,7 +1111,7 @@ pub const TlrTable = extern struct {
         self.columns = null;
         root.gpa.destroy(columns);
 
-        g.as(c.GObjectClass, Class.parent_class).dispose.?(object);
+        g.as(c.GObjectClass, Class.parent_class).finalize.?(object);
     }
 
     fn set_property(object: ?*c.GObject, property_id: c.guint, value: ?*const c.GValue, pspec: ?*c.GParamSpec) callconv(.c) void {
@@ -1153,7 +1157,7 @@ pub const TlrTable = extern struct {
     pub const Class = extern struct {
         parent: Parent,
 
-        const Parent = c.GtkApplicationWindowClass;
+        const Parent = c.GtkWidgetClass;
         var parent_class: *Parent = undefined;
 
         fn init(class: *Class) void {
