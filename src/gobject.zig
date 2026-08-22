@@ -1,21 +1,34 @@
 const std = @import("std");
 const c = @import("c");
 const checks = @import("root").checks;
+const libadwaita = @import("build_options").libadwaita;
 
 pub const Types = struct {
     pub var GFile: c.GType = undefined;
-    pub var GtkApplication: c.GType = undefined;
-    pub var GtkApplicationWindow: c.GType = undefined;
     pub var GtkWidget: c.GType = undefined;
     pub var GtkScrollable: c.GType = undefined;
 
+    pub var XApplication: c.GType = undefined;
+    pub var XApplicationWindow: c.GType = undefined;
+
     pub fn fetch() void {
         GFile = c.g_file_get_type();
-        GtkApplication = c.gtk_application_get_type();
-        GtkApplicationWindow = c.gtk_application_window_get_type();
         GtkWidget = c.gtk_widget_get_type();
         GtkScrollable = c.gtk_scrollable_get_type();
+
+        if (libadwaita) {
+            XApplicationWindow = c.adw_application_window_get_type();
+        } else {
+            XApplicationWindow = c.gtk_application_window_get_type();
+        }
     }
+};
+
+pub const Structs = struct {
+    pub const XApplication = if (libadwaita) c.AdwApplication else c.GtkApplication;
+    pub const XApplicationClass = if (libadwaita) c.AdwApplicationClass else c.GtkApplicationClass;
+    pub const XApplicationWindow = if (libadwaita) c.AdwApplicationWindow else c.GtkApplicationWindow;
+    pub const XApplicationWindowClass = if (libadwaita) c.AdwApplicationWindowClass else c.GtkApplicationWindowClass;
 };
 
 pub inline fn isA(comptime derived: type, comptime parent: type) ?bool {

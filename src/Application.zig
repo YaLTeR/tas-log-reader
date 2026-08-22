@@ -2,21 +2,26 @@ const std = @import("std");
 const c = @import("c");
 const g = @import("gobject.zig");
 const Tracy = @import("root").Tracy;
+const libadwaita = @import("build_options").libadwaita;
 
 const TlrTable = @import("Table.zig").TlrTable;
 const TlrWindow = @import("Window.zig").TlrWindow;
 
 pub const TlrApplication = extern struct {
-    parent: c.GtkApplication,
+    parent: g.Structs.XApplication,
 
     pub const Self = @This();
     pub var g_type: c.GType = undefined;
 
     pub fn register() void {
-        g.Types.GtkApplication = c.gtk_application_get_type();
+        if (libadwaita) {
+            g.Types.XApplication = c.adw_application_get_type();
+        } else {
+            g.Types.XApplication = c.gtk_application_get_type();
+        }
 
         g_type = g.type_register_static_simple(
-            g.Types.GtkApplication,
+            g.Types.XApplication,
             "TlrApplication",
             Class,
             Class.init,
@@ -114,7 +119,7 @@ pub const TlrApplication = extern struct {
     pub const Class = extern struct {
         parent: Parent,
 
-        const Parent = c.GtkApplicationClass;
+        const Parent = g.Structs.XApplicationClass;
         var parent_class: *Parent = undefined;
 
         fn init(class: *Class) void {

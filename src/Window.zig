@@ -2,12 +2,13 @@ const std = @import("std");
 const c = @import("c");
 const g = @import("gobject.zig");
 const Tracy = @import("root").Tracy;
+const libadwaita = @import("build_options").libadwaita;
 
 const TlrApplication = @import("Application.zig").TlrApplication;
 const TlrTable = @import("Table.zig").TlrTable;
 
 pub const TlrWindow = extern struct {
-    parent: c.GtkApplicationWindow,
+    parent: g.Structs.XApplicationWindow,
 
     file: ?*c.GFile,
 
@@ -23,7 +24,7 @@ pub const TlrWindow = extern struct {
 
     pub fn register() void {
         g_type = g.type_register_static_simple(
-            g.Types.GtkApplicationWindow,
+            g.Types.XApplicationWindow,
             "TlrWindow",
             Class,
             Class.init,
@@ -72,7 +73,17 @@ pub const TlrWindow = extern struct {
         const sw = c.gtk_scrolled_window_new();
         c.gtk_scrolled_window_set_child(@ptrCast(sw), table.as(c.GtkWidget));
         c.gtk_scrolled_window_set_propagate_natural_width(@ptrCast(sw), 1);
-        c.gtk_window_set_child(self.as(c.GtkWindow), sw);
+
+        if (libadwaita) {
+            const toolbar_view = c.adw_toolbar_view_new();
+            c.adw_toolbar_view_set_content(@ptrCast(toolbar_view), sw);
+            const header_bar = c.adw_header_bar_new();
+            c.adw_toolbar_view_add_top_bar(@ptrCast(toolbar_view), header_bar);
+            c.adw_toolbar_view_set_top_bar_style(@ptrCast(toolbar_view), c.ADW_TOOLBAR_RAISED_BORDER);
+            c.adw_application_window_set_content(self.as(g.Structs.XApplicationWindow), toolbar_view);
+        } else {
+            c.gtk_window_set_child(self.as(c.GtkWindow), sw);
+        }
 
         _ = c.g_object_bind_property(
             self.as(c.GObject),
@@ -114,7 +125,7 @@ pub const TlrWindow = extern struct {
     pub const Class = extern struct {
         parent: Parent,
 
-        const Parent = c.GtkApplicationWindowClass;
+        const Parent = g.Structs.XApplicationWindowClass;
         var parent_class: *Parent = undefined;
 
         fn init(class: *Class) void {

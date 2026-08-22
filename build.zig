@@ -4,6 +4,7 @@ const Translator = @import("translate_c").Translator;
 pub fn build(b: *std.Build) void {
     const tracy = b.option(std.Build.LazyPath, "tracy", "Enable Tracy integration. Supply path to Tracy source");
     const tracy_on_demand = b.option(bool, "tracy-on-demand", "tracy: Enable on-demand") orelse false;
+    const libadwaita = b.option(bool, "libadwaita", "Enable libadwaita") orelse false;
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -41,7 +42,14 @@ pub fn build(b: *std.Build) void {
 
     const translate_c = b.dependency("translate_c", .{});
 
-    const t: Translator = .init(translate_c, .{
+    const t: Translator = .init(translate_c, if (libadwaita) .{
+        .c_source_file = b.addWriteFiles().add("c.h",
+            \\#include <adwaita.h>
+        ),
+        .link_system_libs = &.{.{ .name = "libadwaita-1" }},
+        .target = target,
+        .optimize = optimize,
+    } else .{
         .c_source_file = b.addWriteFiles().add("c.h",
             \\#include <gtk/gtk.h>
         ),
@@ -62,6 +70,10 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+
+    const exe_options = b.addOptions();
+    exe_options.addOption(bool, "libadwaita", libadwaita);
+    exe.root_module.addOptions("build_options", exe_options);
 
     b.installArtifact(exe);
 
