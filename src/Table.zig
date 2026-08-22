@@ -14,7 +14,7 @@ const TasLog = tas_log_reader.TasLog;
 // Values from libadwaita.
 const dimmed = 36045;
 const x_padding = 6;
-const y_padding = 3;
+const y_padding = 2;
 const border_opacity = 0.15;
 
 const Buf = [16]u8;
