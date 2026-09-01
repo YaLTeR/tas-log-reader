@@ -624,6 +624,36 @@ pub const TlrTable = extern struct {
         };
     }
 
+    pub fn reload(self: *Self) void {
+        if (self.file == null) return;
+
+        const zone = Tracy.zoneN(@src(), "TlrTable::reload");
+        defer zone.end();
+
+        self.clearLog();
+        // TODO: no need to destroy header & template here.
+        for (self.columns.?) |*column| column.destroyLayouts();
+        self.first_row_is = 0;
+        self.last_row_is = 0;
+        c.gtk_widget_queue_resize(self.as(c.GtkWidget));
+
+        const zone_load = Tracy.zoneN(@src(), "load_contents");
+        var contents: ?[*]u8 = undefined;
+        var length: c.gsize = undefined;
+        var err: ?*c.GError = null;
+        if (c.g_file_load_contents(self.file, null, &contents, &length, null, &err) == 0) {
+            std.log.warn("error reading log: {s}", .{err.?.*.message});
+            c.g_error_free(err);
+            zone_load.end();
+            return;
+        }
+        zone_load.end();
+
+        self.parseLog(contents.?[0..length]) catch |e| {
+            std.log.warn("error parsing log: {}", .{e});
+        };
+    }
+
     fn clearAdjustment(self: *Self, adj: *?*c.GtkAdjustment) void {
         if (adj.*) |prev| {
             adj.* = null;
