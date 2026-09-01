@@ -10,6 +10,7 @@ const Tracy = root.Tracy;
 
 const tas_log_reader = @import("tas_log_reader");
 const TasLog = tas_log_reader.TasLog;
+const LoadedLog = tas_log_reader.LoadedLog;
 
 // Values from libadwaita.
 const dimmed = 36045;
@@ -19,78 +20,6 @@ const border_opacity = 0.15;
 
 const Buf = [16]u8;
 const AttrBuf = [2]?*c.PangoAttribute;
-
-const Log = struct {
-    file: Io.File,
-    mmap: Io.File.MemoryMap,
-    log: TasLog,
-    rows: ArrayList(Row),
-
-    const Row = struct {
-        pf: *const TasLog.PhysicsFrame,
-        cf: ?*const TasLog.CommandFrame,
-    };
-
-    fn init(self: *@This(), io: Io, gpa: Allocator, path: []const u8) !void {
-        const zone = Tracy.zoneN(@src(), "Log::init");
-        defer zone.end();
-
-        const file = try Io.Dir.cwd().openFile(io, path, .{
-            .mode = .read_only,
-            .allow_directory = false,
-        });
-        errdefer file.close(io);
-
-        const size = try file.length(io);
-        var mmap = try file.createMemoryMap(io, .{
-            .len = size,
-            .protection = .{ .read = true },
-        });
-        errdefer mmap.destroy(io);
-
-        self.* = .{
-            .file = file,
-            .mmap = mmap,
-            .log = undefined,
-            .rows = .empty,
-        };
-        try self.log.parse(gpa, mmap.memory);
-
-        // self.log.pf.shrinkRetainingCapacity(50);
-
-        errdefer self.log.deinit();
-        errdefer self.rows.deinit(gpa);
-
-        for (self.log.pf.items) |*pf| {
-            if (pf.cf.len == 0) {
-                const row = Row{
-                    .pf = pf,
-                    .cf = null,
-                };
-                try self.rows.append(gpa, row);
-            } else {
-                for (pf.cf) |*cf| {
-                    const row = Row{
-                        .pf = pf,
-                        .cf = cf,
-                    };
-                    try self.rows.append(gpa, row);
-                }
-            }
-        }
-    }
-
-    fn deinit(self: *@This(), io: Io) void {
-        const zone = Tracy.zoneN(@src(), "Log::deinit");
-        defer zone.end();
-
-        const gpa = self.log.arena.child_allocator;
-        self.rows.deinit(gpa);
-        self.log.deinit();
-        self.mmap.destroy(io);
-        self.file.close(io);
-    }
-};
 
 const SizedLayout = struct {
     layout: *c.PangoLayout,
@@ -237,7 +166,7 @@ pub const TlrTable = extern struct {
     hscroll_policy: c.GtkScrollablePolicy,
     vscroll_policy: c.GtkScrollablePolicy,
 
-    log: ?*Log,
+    log: ?*LoadedLog,
 
     // Extern structs aren't allowed to contain ?[]Column...
     columns: ?*[29]Column,
@@ -370,7 +299,7 @@ pub const TlrTable = extern struct {
     fn parseLog(self: *Self, path: []const u8) !void {
         std.debug.assert(self.log == null);
 
-        const log = try root.gpa.create(Log);
+        const log = try root.gpa.create(LoadedLog);
         errdefer root.gpa.destroy(log);
 
         try log.init(root.io, root.gpa, path);

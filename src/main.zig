@@ -15,7 +15,7 @@ pub var gpa: std.mem.Allocator = undefined;
 pub var io: std.Io = undefined;
 
 const tas_log_reader = @import("tas_log_reader");
-const TasLog = tas_log_reader.TasLog;
+pub const TasLog = tas_log_reader.TasLog;
 pub const Tracy = tas_log_reader.Tracy;
 
 const TlrApplication = @import("Application.zig").TlrApplication;

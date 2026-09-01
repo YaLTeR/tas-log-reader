@@ -101,4 +101,20 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+
+    const bench_log = b.addExecutable(.{
+        .name = "bench_log",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/bench_log.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "tas_log_reader", .module = mod },
+            },
+        }),
+    });
+    const bench_log_install = b.addInstallArtifact(bench_log, .{});
+
+    const bench_step = b.step("bench", "Build benchmarks");
+    bench_step.dependOn(&bench_log_install.step);
 }
