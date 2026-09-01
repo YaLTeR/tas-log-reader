@@ -590,6 +590,10 @@ pub const TlrTable = extern struct {
 
     pub fn setFile(self: *Self, file: ?*c.GFile) void {
         if (!g.set_object(@ptrCast(&self.file), @ptrCast(@alignCast(file)))) return;
+
+        const zone = Tracy.zoneN(@src(), "TlrTable::setFile");
+        defer zone.end();
+
         defer c.g_object_notify_by_pspec(self.as(c.GObject), pSpec(Prop.file).*);
 
         self.clearLog();
@@ -603,12 +607,21 @@ pub const TlrTable = extern struct {
             return;
         }
 
-        if (@as(?[*:0]u8, c.g_file_get_path(self.file))) |path| {
-            self.parseLog(std.mem.span(path)) catch |err| {
-                std.log.warn("error parsing log: {}", .{err});
-            };
-            c.g_free(path);
+        const zone_load = Tracy.zoneN(@src(), "load_contents");
+        var contents: ?[*]u8 = undefined;
+        var length: c.gsize = undefined;
+        var err: ?*c.GError = null;
+        if (c.g_file_load_contents(self.file, null, &contents, &length, null, &err) == 0) {
+            std.log.warn("error reading log: {s}", .{err.?.*.message});
+            c.g_error_free(err);
+            zone_load.end();
+            return;
         }
+        zone_load.end();
+
+        self.parseLog(contents.?[0..length]) catch |e| {
+            std.log.warn("error parsing log: {}", .{e});
+        };
     }
 
     fn clearAdjustment(self: *Self, adj: *?*c.GtkAdjustment) void {
@@ -654,13 +667,13 @@ pub const TlrTable = extern struct {
         self.adjustmentValueChanged(null);
     }
 
-    fn parseLog(self: *Self, path: []const u8) !void {
+    fn parseLog(self: *Self, contents: []const u8) !void {
         std.debug.assert(self.log == null);
 
         const log = try root.gpa.create(LoadedLog);
         errdefer root.gpa.destroy(log);
 
-        try log.init(root.io, root.gpa, path);
+        try log.init(root.gpa, contents);
         std.log.debug("loaded {} rows", .{log.rows.items.len});
 
         self.log = log;
@@ -669,9 +682,11 @@ pub const TlrTable = extern struct {
     fn clearLog(self: *Self) void {
         if (self.log) |log| {
             const l = log;
+            const contents = log.contents;
             self.log = null;
             l.deinit();
             root.gpa.destroy(l);
+            c.g_free(@constCast(contents.ptr));
         }
     }
 

@@ -8,7 +8,7 @@ const TasLog = root.TasLog;
 
 const LoadedLog = @This();
 
-buf: []u8,
+contents: []const u8,
 log: TasLog,
 rows: ArrayList(Row),
 
@@ -17,29 +17,16 @@ const Row = struct {
     cf: ?*const TasLog.CommandFrame,
 };
 
-pub fn init(self: *LoadedLog, io: Io, gpa: Allocator, path: []const u8) !void {
+pub fn init(self: *LoadedLog, gpa: Allocator, contents: []const u8) !void {
     const zone = Tracy.zoneN(@src(), "Log::init");
     defer zone.end();
 
-    const file = try Io.Dir.cwd().openFile(io, path, .{
-        .mode = .read_only,
-        .allow_directory = false,
-    });
-    defer file.close(io);
-
-    const size = try file.length(io);
-    const buf = try gpa.alloc(u8, size);
-    errdefer gpa.free(buf);
-
-    const n = try file.readPositionalAll(io, buf, 0);
-    if (n != size) return error.UnexpectedEndOfFile;
-
     self.* = .{
-        .buf = buf,
+        .contents = contents,
         .log = undefined,
         .rows = .empty,
     };
-    try self.log.parse(gpa, buf);
+    try self.log.parse(gpa, contents);
 
     errdefer self.log.deinit();
     errdefer self.rows.deinit(gpa);
@@ -70,7 +57,6 @@ pub fn deinit(self: *LoadedLog) void {
     const gpa = self.log.arena.child_allocator;
     self.rows.deinit(gpa);
     self.log.deinit();
-    gpa.free(self.buf);
 
     self.* = undefined;
 }
