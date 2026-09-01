@@ -479,16 +479,9 @@ const Column = struct {
         const header_layout = c.gtk_widget_create_pango_layout(widget, null).?;
         c.pango_layout_set_text(header_layout, spec.name.ptr, @intCast(spec.name.len));
 
-        const context = c.pango_layout_get_context(header_layout);
-        const desc = c.pango_context_get_font_description(context);
-        const size = c.pango_font_description_get_size(desc);
-        std.debug.assert(c.pango_font_description_get_size_is_absolute(desc) != 0);
-
-        const header_size = @divTrunc(size * 82, 100); // From libadwaita .caption-heading
-
         const header_attrs = c.pango_attr_list_new();
         defer c.pango_attr_list_unref(header_attrs);
-        c.pango_attr_list_insert(header_attrs, c.pango_attr_size_new_absolute(header_size));
+        c.pango_attr_list_insert(header_attrs, c.pango_attr_scale_new(0.82)); // From libadwaita .caption-heading
         c.pango_layout_set_attributes(header_layout, header_attrs);
 
         var header_sized = SizedLayout{ .layout = header_layout, .w = undefined, .h = undefined };
@@ -524,6 +517,7 @@ pub const TlrTable = extern struct {
     hscroll_policy: c.GtkScrollablePolicy,
     vscroll_policy: c.GtkScrollablePolicy,
 
+    // The contents field must be freed with g_free().
     log: ?*LoadedLog,
 
     // Extern structs aren't allowed to contain ?[]Column...
@@ -620,6 +614,7 @@ pub const TlrTable = extern struct {
         zone_load.end();
 
         self.parseLog(contents.?[0..length]) catch |e| {
+            c.g_free(contents);
             std.log.warn("error parsing log: {}", .{e});
         };
     }
