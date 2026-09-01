@@ -13,7 +13,7 @@ pub fn main(init: std.process.Init) !void {
 
     var log: LoadedLog = undefined;
     try log.init(io, gpa, path);
-    defer log.deinit(io);
+    defer log.deinit();
 
     std.mem.doNotOptimizeAway(log);
 }

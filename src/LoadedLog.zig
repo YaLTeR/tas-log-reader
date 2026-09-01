@@ -8,8 +8,7 @@ const TasLog = root.TasLog;
 
 const LoadedLog = @This();
 
-file: Io.File,
-mmap: Io.File.MemoryMap,
+buf: []u8,
 log: TasLog,
 rows: ArrayList(Row),
 
@@ -26,22 +25,21 @@ pub fn init(self: *LoadedLog, io: Io, gpa: Allocator, path: []const u8) !void {
         .mode = .read_only,
         .allow_directory = false,
     });
-    errdefer file.close(io);
+    defer file.close(io);
 
     const size = try file.length(io);
-    var mmap = try file.createMemoryMap(io, .{
-        .len = size,
-        .protection = .{ .read = true },
-    });
-    errdefer mmap.destroy(io);
+    const buf = try gpa.alloc(u8, size);
+    errdefer gpa.free(buf);
+
+    const n = try file.readPositionalAll(io, buf, 0);
+    if (n != size) return error.UnexpectedEndOfFile;
 
     self.* = .{
-        .file = file,
-        .mmap = mmap,
+        .buf = buf,
         .log = undefined,
         .rows = .empty,
     };
-    try self.log.parse(gpa, mmap.memory);
+    try self.log.parse(gpa, buf);
 
     errdefer self.log.deinit();
     errdefer self.rows.deinit(gpa);
@@ -65,15 +63,14 @@ pub fn init(self: *LoadedLog, io: Io, gpa: Allocator, path: []const u8) !void {
     }
 }
 
-pub fn deinit(self: *LoadedLog, io: Io) void {
+pub fn deinit(self: *LoadedLog) void {
     const zone = Tracy.zoneN(@src(), "Log::deinit");
     defer zone.end();
 
     const gpa = self.log.arena.child_allocator;
     self.rows.deinit(gpa);
     self.log.deinit();
-    self.mmap.destroy(io);
-    self.file.close(io);
+    gpa.free(self.buf);
 
     self.* = undefined;
 }

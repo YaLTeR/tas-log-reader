@@ -312,7 +312,7 @@ pub const TlrTable = extern struct {
         if (self.log) |log| {
             const l = log;
             self.log = null;
-            l.deinit(root.io);
+            l.deinit();
             root.gpa.destroy(l);
         }
     }
