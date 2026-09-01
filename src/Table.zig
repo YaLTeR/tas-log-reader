@@ -19,7 +19,47 @@ const y_padding = 2;
 const border_opacity = 0.15;
 
 const Buf = [16]u8;
-const AttrBuf = [2]?*c.PangoAttribute;
+
+const PangoRGB = struct {
+    rgb: u24,
+
+    fn r(self: PangoRGB) c_ushort {
+        return @as(c_ushort, @intCast(self.rgb >> 16)) * 257;
+    }
+
+    fn g(self: PangoRGB) c_ushort {
+        return @as(c_ushort, @intCast((self.rgb >> 8) & 0xFF)) * 257;
+    }
+
+    fn b(self: PangoRGB) c_ushort {
+        return @as(c_ushort, @intCast(self.rgb & 0xFF)) * 257;
+    }
+};
+
+const Style = struct {
+    fg: ?PangoRGB = null,
+    dimmed: bool = false,
+    bold: bool = false,
+
+    fn insert(self: Style, attrs: *c.PangoAttrList) void {
+        if (self.fg) |fg| {
+            c.pango_attr_list_insert(attrs, c.pango_attr_foreground_new(fg.r(), fg.g(), fg.b()));
+        }
+
+        if (self.dimmed) {
+            c.pango_attr_list_insert(attrs, c.pango_attr_foreground_alpha_new(dimmed));
+        }
+
+        if (self.bold) {
+            c.pango_attr_list_insert(attrs, c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD));
+        }
+    }
+};
+
+const Cell = struct {
+    text: []const u8 = "",
+    style: ?Style = null,
+};
 
 const SizedLayout = struct {
     layout: *c.PangoLayout,
@@ -48,11 +88,11 @@ const Column = struct {
     layouts: ArrayList(*c.PangoLayout),
 
     xalign: Align,
-    static_attrs: [2]?*c.PangoAttribute,
+    static_style: Style,
     bind: *const BindFn,
     background: *const ColorFn,
 
-    const BindFn = fn (buf: *Buf, attrs: *AttrBuf, row: Data) []const u8;
+    const BindFn = fn (buf: *Buf, row: Data) Cell;
     const ColorFn = fn (row: Data) ?c.GdkRGBA;
 
     const Data = struct {
@@ -65,7 +105,7 @@ const Column = struct {
         name: []const u8,
         template: []const u8,
         xalign: Align,
-        static_attrs: ?[2]?*c.PangoAttribute,
+        static_style: Style,
         bind: *const BindFn,
         background: ?*const ColorFn,
     ) @This() {
@@ -76,7 +116,7 @@ const Column = struct {
             .template_layout = null,
             .layouts = .empty,
             .xalign = xalign,
-            .static_attrs = static_attrs orelse .{ null, null },
+            .static_style = static_style,
             .bind = bind,
             .background = background orelse transparent,
         };
@@ -85,9 +125,6 @@ const Column = struct {
     fn dispose(self: *@This(), gpa: Allocator) void {
         std.debug.assert(self.header_layout == null);
         std.debug.assert(self.template_layout == null);
-
-        for (self.static_attrs) |a| if (a) |aa| c.pango_attribute_destroy(aa) else break;
-        self.static_attrs = .{ null, null };
 
         if (self.layouts.capacity == 0) return;
 
@@ -325,233 +362,203 @@ pub const TlrTable = extern struct {
                 return std.fmt.bufPrint(buf, fmt, args) catch return buf;
             }
 
-            fn frame(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                return fit(buf, "{}", .{row.n});
+            fn frame(buf: *Buf, row: Data) Cell {
+                return .{ .text = fit(buf, "{}", .{row.n}) };
             }
 
-            fn time(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const ft = row.pf.ft orelse return "";
-                return fit(buf, "{:.3}", .{ft});
+            fn time(buf: *Buf, row: Data) Cell {
+                const ft = row.pf.ft orelse return .{};
+                return .{ .text = fit(buf, "{:.3}", .{ft}) };
             }
 
-            fn ms(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                return fit(buf, "{}", .{cf.ms});
+            fn ms(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                return .{ .text = fit(buf, "{}", .{cf.ms}) };
             }
 
-            fn speed(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                const pm = cf.postpm orelse return "";
+            fn speed(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                const pm = cf.postpm orelse return .{};
 
                 const vel = pm.vel;
-                if (vel[0] == 0 and vel[1] == 0) return "";
+                if (vel[0] == 0 and vel[1] == 0) return .{};
 
-                return fit(buf, "{:.3}", .{math.hypot(vel[0], vel[1])});
+                return .{ .text = fit(buf, "{:.3}", .{math.hypot(vel[0], vel[1])}) };
             }
 
-            fn vel_yaw(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                const pm = cf.postpm orelse return "";
+            fn vel_yaw(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                const pm = cf.postpm orelse return .{};
 
                 const vel = pm.vel;
-                if (vel[0] == 0 and vel[1] == 0) return "";
+                if (vel[0] == 0 and vel[1] == 0) return .{};
 
-                return fit(buf, "{:.3}", .{math.atan2(vel[1], vel[0]) * math.deg_per_rad});
+                return .{ .text = fit(buf, "{:.3}", .{math.atan2(vel[1], vel[0]) * math.deg_per_rad}) };
             }
 
-            fn vert_speed(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                const cf = row.cf orelse return "";
-                const pm = cf.postpm orelse return "";
+            fn vert_speed(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                const pm = cf.postpm orelse return .{};
 
                 const z = pm.vel[2];
-                if (z == 0) return "";
+                if (z == 0) return .{};
 
-                if (z > 0) {
-                    attrs[0] = c.pango_attr_foreground_new(0x1c * 257, 0x71 * 257, 0xd8 * 257);
-                } else {
-                    attrs[0] = c.pango_attr_foreground_new(0xed * 257, 0x33 * 257, 0x3b * 257);
-                }
+                const style: Style = if (z > 0)
+                    .{ .fg = .{ .rgb = 0x1c71d8 } }
+                else
+                    .{ .fg = .{ .rgb = 0xed333b } };
 
-                return fit(buf, "{:.1}", .{z});
+                return .{ .text = fit(buf, "{:.1}", .{z}), .style = style };
             }
 
-            fn G(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn G(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
                 _ = row;
-                return "";
+                return .{};
             }
 
-            fn K(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn K(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
                 _ = row;
-                return "";
+                return .{};
             }
 
-            fn L(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn L(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
                 _ = row;
-                return "";
+                return .{};
             }
 
-            fn W(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn W(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
                 _ = row;
-                return "";
+                return .{};
             }
 
-            fn J(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn J(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
                 _ = row;
-                return "";
+                return .{};
             }
 
-            fn D(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn D(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
                 _ = row;
-                return "";
+                return .{};
             }
 
-            fn F(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn F(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
-                const cf = row.cf orelse return "";
+                const cf = row.cf orelse return .{};
 
                 const x = cf.fsu[0];
-                if (x == 0) return "";
+                if (x == 0) return .{};
 
-                return if (x > 0) "F" else "B";
+                return .{ .text = if (x > 0) "F" else "B" };
             }
 
-            fn S(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn S(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
-                const cf = row.cf orelse return "";
+                const cf = row.cf orelse return .{};
 
                 const x = cf.fsu[1];
-                if (x == 0) return "";
+                if (x == 0) return .{};
 
-                return if (x > 0) "R" else "L";
+                return .{ .text = if (x > 0) "R" else "L" };
             }
 
-            fn U(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn U(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
-                const cf = row.cf orelse return "";
+                const cf = row.cf orelse return .{};
 
                 const x = cf.fsu[2];
-                if (x == 0) return "";
+                if (x == 0) return .{};
 
-                return if (x > 0) "U" else "D";
+                return .{ .text = if (x > 0) "U" else "D" };
             }
 
-            fn yaw(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                return fit(buf, "{:.3}", .{cf.view[0]});
+            fn yaw(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                return .{ .text = fit(buf, "{:.3}", .{cf.view[0]}) };
             }
 
-            fn pitch(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                return fit(buf, "{:.3}", .{cf.view[1]});
+            fn pitch(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                return .{ .text = fit(buf, "{:.3}", .{cf.view[1]}) };
             }
 
-            fn health(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                const hp = cf.hp orelse return "";
-                return fit(buf, "{:.0}", .{hp});
+            fn health(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                const hp = cf.hp orelse return .{};
+                return .{ .text = fit(buf, "{:.0}", .{hp}) };
             }
 
-            fn armor(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                const ap = cf.ap orelse return "";
-                return fit(buf, "{:.1}", .{ap});
+            fn armor(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                const ap = cf.ap orelse return .{};
+                return .{ .text = fit(buf, "{:.1}", .{ap}) };
             }
 
-            fn E(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn E(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
                 _ = row;
-                return "";
+                return .{};
             }
 
-            fn A1(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn A1(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
                 _ = row;
-                return "";
+                return .{};
             }
 
-            fn A2(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn A2(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
                 _ = row;
-                return "";
+                return .{};
             }
 
-            fn R(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
+            fn R(buf: *Buf, row: Data) Cell {
                 _ = buf;
-                _ = attrs;
                 _ = row;
-                return "";
+                return .{};
             }
 
-            fn cl_state(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                if (row.pf.cls != 5) {
-                    attrs[0] = c.pango_attr_foreground_new(0xed * 257, 0x33 * 257, 0x3b * 257);
-                    attrs[1] = c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD);
-                } else {
+            fn cl_state(buf: *Buf, row: Data) Cell {
+                const style: Style = if (row.pf.cls != 5)
+                    .{ .fg = .{ .rgb = 0xed333b }, .bold = true }
+                else
                     // Signal to reset.
-                    attrs[0] = null;
-                }
-                return fit(buf, "{}", .{row.pf.cls});
+                    .{};
+                return .{ .text = fit(buf, "{}", .{row.pf.cls}), .style = style };
             }
 
-            fn z_pos(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                const pm = cf.postpm orelse return "";
-                return fit(buf, "{:.3}", .{pm.pos[2]});
+            fn z_pos(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                const pm = cf.postpm orelse return .{};
+                return .{ .text = fit(buf, "{:.3}", .{pm.pos[2]}) };
             }
 
-            fn x_pos(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                const pm = cf.postpm orelse return "";
-                return fit(buf, "{:.3}", .{pm.pos[0]});
+            fn x_pos(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                const pm = cf.postpm orelse return .{};
+                return .{ .text = fit(buf, "{:.3}", .{pm.pos[0]}) };
             }
 
-            fn y_pos(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                const pm = cf.postpm orelse return "";
-                return fit(buf, "{:.3}", .{pm.pos[1]});
+            fn y_pos(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                const pm = cf.postpm orelse return .{};
+                return .{ .text = fit(buf, "{:.3}", .{pm.pos[1]}) };
             }
 
-            fn sh_seed(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                return fit(buf, "{}", .{cf.ss});
+            fn sh_seed(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                return .{ .text = fit(buf, "{}", .{cf.ss}) };
             }
 
-            fn fr_time_rem(buf: *Buf, attrs: *AttrBuf, row: Data) []const u8 {
-                _ = attrs;
-                const cf = row.cf orelse return "";
-                const rem = cf.rem orelse return "";
-                return fit(buf, "{e:.2}", .{rem});
+            fn fr_time_rem(buf: *Buf, row: Data) Cell {
+                const cf = row.cf orelse return .{};
+                const rem = cf.rem orelse return .{};
+                return .{ .text = fit(buf, "{e:.2}", .{rem}) };
             }
         };
 
@@ -659,35 +666,35 @@ pub const TlrTable = extern struct {
 
         self.columns = root.gpa.create([29]Column) catch @panic("out of memory");
         self.columns.?.* = .{
-            .init("Frame", "99999", .right, null, Bind.frame, null),
-            .init("Time", "0.000", .left, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.time, null),
-            .init("Ms", "99", .right, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.ms, null),
-            .init("Speed", "9999.999", .right, null, Bind.speed, null),
-            .init("Vel. Yaw", "-999.999", .right, null, Bind.vel_yaw, null),
-            .init("Vert. Speed", "-9999.9", .right, null, Bind.vert_speed, null),
-            .init("G", "W", .left, null, Bind.G, Background.G),
-            .init("K", "W", .left, null, Bind.K, Background.K),
-            .init("L", "W", .left, null, Bind.L, Background.L),
-            .init("W", "W", .left, null, Bind.W, Background.W),
-            .init("J", "W", .left, null, Bind.J, Background.J),
-            .init("D", "W", .left, null, Bind.D, Background.D),
-            .init("F", "W", .center, .{ c.pango_attr_foreground_new(65535, 65535, 65535), c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD) }, Bind.F, Background.F),
-            .init("S", "W", .center, .{ c.pango_attr_foreground_new(65535, 65535, 65535), c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD) }, Bind.S, Background.S),
-            .init("U", "W", .center, .{ c.pango_attr_foreground_new(65535, 65535, 65535), c.pango_attr_weight_new(c.PANGO_WEIGHT_BOLD) }, Bind.U, Background.U),
-            .init("Yaw", "-999.999", .right, null, Bind.yaw, null),
-            .init("Pitch", "-999.999", .right, null, Bind.pitch, null),
-            .init("Health", "999", .right, null, Bind.health, null),
-            .init("Armor", "999.9", .right, null, Bind.armor, null),
-            .init("E", "W", .left, null, Bind.E, Background.E),
-            .init("1", "W", .left, null, Bind.A1, Background.A1),
-            .init("2", "W", .left, null, Bind.A2, Background.A2),
-            .init("R", "W", .left, null, Bind.R, Background.R),
-            .init("CL State", "9", .center, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.cl_state, null),
-            .init("Z Position", "-9999.999", .right, null, Bind.z_pos, null),
-            .init("X Position", "-9999.999", .right, null, Bind.x_pos, null),
-            .init("Y Position", "-9999.999", .right, null, Bind.y_pos, null),
-            .init("Sh. Seed", "99999", .right, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.sh_seed, null),
-            .init("Fr. Time Rem.", "9.99e-9", .right, .{ c.pango_attr_foreground_alpha_new(dimmed), null }, Bind.fr_time_rem, null),
+            .init("Frame", "99999", .right, .{}, Bind.frame, null),
+            .init("Time", "0.000", .left, .{ .dimmed = true }, Bind.time, null),
+            .init("Ms", "99", .right, .{ .dimmed = true }, Bind.ms, null),
+            .init("Speed", "9999.999", .right, .{}, Bind.speed, null),
+            .init("Vel. Yaw", "-999.999", .right, .{}, Bind.vel_yaw, null),
+            .init("Vert. Speed", "-9999.9", .right, .{}, Bind.vert_speed, null),
+            .init("G", "W", .left, .{}, Bind.G, Background.G),
+            .init("K", "W", .left, .{}, Bind.K, Background.K),
+            .init("L", "W", .left, .{}, Bind.L, Background.L),
+            .init("W", "W", .left, .{}, Bind.W, Background.W),
+            .init("J", "W", .left, .{}, Bind.J, Background.J),
+            .init("D", "W", .left, .{}, Bind.D, Background.D),
+            .init("F", "W", .center, .{ .fg = .{ .rgb = 0xffffff }, .bold = true }, Bind.F, Background.F),
+            .init("S", "W", .center, .{ .fg = .{ .rgb = 0xffffff }, .bold = true }, Bind.S, Background.S),
+            .init("U", "W", .center, .{ .fg = .{ .rgb = 0xffffff }, .bold = true }, Bind.U, Background.U),
+            .init("Yaw", "-999.999", .right, .{}, Bind.yaw, null),
+            .init("Pitch", "-999.999", .right, .{}, Bind.pitch, null),
+            .init("Health", "999", .right, .{}, Bind.health, null),
+            .init("Armor", "999.9", .right, .{}, Bind.armor, null),
+            .init("E", "W", .left, .{}, Bind.E, Background.E),
+            .init("1", "W", .left, .{}, Bind.A1, Background.A1),
+            .init("2", "W", .left, .{}, Bind.A2, Background.A2),
+            .init("R", "W", .left, .{}, Bind.R, Background.R),
+            .init("CL State", "9", .center, .{ .dimmed = true }, Bind.cl_state, null),
+            .init("Z Position", "-9999.999", .right, .{}, Bind.z_pos, null),
+            .init("X Position", "-9999.999", .right, .{}, Bind.x_pos, null),
+            .init("Y Position", "-9999.999", .right, .{}, Bind.y_pos, null),
+            .init("Sh. Seed", "99999", .right, .{ .dimmed = true }, Bind.sh_seed, null),
+            .init("Fr. Time Rem.", "9.99e-9", .right, .{ .dimmed = true }, Bind.fr_time_rem, null),
         };
 
         c.gtk_widget_add_css_class(self.as(c.GtkWidget), "view");
@@ -877,12 +884,10 @@ pub const TlrTable = extern struct {
                     if (column.layouts.items.len <= n) {
                         const layout = c.gtk_widget_create_pango_layout(widget, null).?;
 
-                        // We don't know here if the column uses dynamic attrs; in case it doesn't, set here.
+                        // We don't know here if the column uses dynamic style; in case it doesn't, set here.
                         const attrs = c.pango_attr_list_new().?;
                         c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
-                        for (column.static_attrs) |a| if (a) |aa| {
-                            c.pango_attr_list_insert(attrs, c.pango_attribute_copy(aa));
-                        } else break;
+                        column.static_style.insert(attrs);
                         c.pango_layout_set_attributes(layout, attrs);
                         c.pango_attr_list_unref(attrs);
 
@@ -899,25 +904,21 @@ pub const TlrTable = extern struct {
 
                     if (n >= format_from) {
                         var buf: Buf = undefined;
-                        // 8 is a marker that the column does not need to reset attrs.
-                        var attr_buf: AttrBuf = .{ @ptrFromInt(8), null };
-                        const text = column.bind(&buf, &attr_buf, row);
+                        const cell = column.bind(&buf, row);
 
                         // Avoid reformatting if text matches.
                         //
-                        // It's fine for us, whereas pango will always reallocate and recompute layout.
+                        // It's fine for us, whereas Pango will always reallocate and recompute layout.
                         const prev: [*:0]const u8 = c.pango_layout_get_text(layout);
-                        if (!std.mem.eql(u8, text, std.mem.span(prev))) {
-                            c.pango_layout_set_text(layout, text.ptr, @intCast(text.len));
+                        if (!std.mem.eql(u8, cell.text, std.mem.span(prev))) {
+                            c.pango_layout_set_text(layout, cell.text.ptr, @intCast(cell.text.len));
 
                             // If it's null we still want to reset the attributes to fresh ones.
-                            if (@intFromPtr(attr_buf[0]) != 8) {
+                            if (cell.style) |style| {
                                 const attrs = c.pango_attr_list_new().?;
                                 c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
-                                for (column.static_attrs) |a| if (a) |aa| {
-                                    c.pango_attr_list_insert(attrs, c.pango_attribute_copy(aa));
-                                } else break;
-                                for (attr_buf) |a| if (a) |aa| c.pango_attr_list_insert(attrs, aa) else break;
+                                column.static_style.insert(attrs);
+                                style.insert(attrs);
                                 c.pango_layout_set_attributes(layout, attrs);
                                 c.pango_attr_list_unref(attrs);
                             }
@@ -929,8 +930,6 @@ pub const TlrTable = extern struct {
                             // (conditional) get_pixel_size() and (unconditional)
                             // append_layout() below.
                             _ = c.pango_layout_get_lines_readonly(layout);
-                        } else if (@intFromPtr(attr_buf[0]) > 8) {
-                            for (attr_buf) |a| if (a) |aa| c.pango_attribute_destroy(aa) else break;
                         }
                     }
 
