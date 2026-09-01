@@ -73,24 +73,19 @@ const SizedLayout = struct {
 
 const Align = enum { left, center, right };
 
-fn transparent(row: Column.Data) ?c.GdkRGBA {
+fn transparent(row: ColumnSpec.Data) ?c.GdkRGBA {
     _ = row;
     return null;
 }
 
-const Column = struct {
+const ColumnSpec = struct {
     name: []const u8,
     template: []const u8, // Template string for measuring the size.
 
-    header_layout: ?SizedLayout,
-    template_layout: ?SizedLayout,
-
-    layouts: ArrayList(*c.PangoLayout),
-
-    xalign: Align,
-    static_style: Style,
+    xalign: Align = .right,
+    style: Style = .{},
     bind: *const BindFn,
-    background: *const ColorFn,
+    background: *const ColorFn = transparent,
 
     const BindFn = fn (buf: *Buf, row: Data) Cell;
     const ColorFn = fn (row: Data) ?c.GdkRGBA;
@@ -100,27 +95,353 @@ const Column = struct {
         pf: *const TasLog.PhysicsFrame,
         cf: ?*const TasLog.CommandFrame,
     };
+};
 
-    fn init(
-        name: []const u8,
-        template: []const u8,
-        xalign: Align,
-        static_style: Style,
-        bind: *const BindFn,
-        background: ?*const ColorFn,
-    ) @This() {
+const Bind = struct {
+    const Data = ColumnSpec.Data;
+
+    fn fit(buf: *Buf, comptime fmt: []const u8, args: anytype) []const u8 {
+        return std.fmt.bufPrint(buf, fmt, args) catch return buf;
+    }
+
+    fn frame(buf: *Buf, row: Data) Cell {
+        return .{ .text = fit(buf, "{}", .{row.n}) };
+    }
+
+    fn time(buf: *Buf, row: Data) Cell {
+        const ft = row.pf.ft orelse return .{};
+        return .{ .text = fit(buf, "{:.3}", .{ft}) };
+    }
+
+    fn ms(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        return .{ .text = fit(buf, "{}", .{cf.ms}) };
+    }
+
+    fn speed(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        const pm = cf.postpm orelse return .{};
+
+        const vel = pm.vel;
+        if (vel[0] == 0 and vel[1] == 0) return .{};
+
+        return .{ .text = fit(buf, "{:.3}", .{math.hypot(vel[0], vel[1])}) };
+    }
+
+    fn vel_yaw(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        const pm = cf.postpm orelse return .{};
+
+        const vel = pm.vel;
+        if (vel[0] == 0 and vel[1] == 0) return .{};
+
+        return .{ .text = fit(buf, "{:.3}", .{math.atan2(vel[1], vel[0]) * math.deg_per_rad}) };
+    }
+
+    fn vert_speed(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        const pm = cf.postpm orelse return .{};
+
+        const z = pm.vel[2];
+        if (z == 0) return .{};
+
+        const style: Style = if (z > 0)
+            .{ .fg = .{ .rgb = 0x1c71d8 } }
+        else
+            .{ .fg = .{ .rgb = 0xed333b } };
+
+        return .{ .text = fit(buf, "{:.1}", .{z}), .style = style };
+    }
+
+    fn G(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        _ = row;
+        return .{};
+    }
+
+    fn K(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        _ = row;
+        return .{};
+    }
+
+    fn L(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        _ = row;
+        return .{};
+    }
+
+    fn W(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        _ = row;
+        return .{};
+    }
+
+    fn J(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        _ = row;
+        return .{};
+    }
+
+    fn D(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        _ = row;
+        return .{};
+    }
+
+    fn F(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        const cf = row.cf orelse return .{};
+
+        const x = cf.fsu[0];
+        if (x == 0) return .{};
+
+        return .{ .text = if (x > 0) "F" else "B" };
+    }
+
+    fn S(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        const cf = row.cf orelse return .{};
+
+        const x = cf.fsu[1];
+        if (x == 0) return .{};
+
+        return .{ .text = if (x > 0) "R" else "L" };
+    }
+
+    fn U(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        const cf = row.cf orelse return .{};
+
+        const x = cf.fsu[2];
+        if (x == 0) return .{};
+
+        return .{ .text = if (x > 0) "U" else "D" };
+    }
+
+    fn yaw(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        return .{ .text = fit(buf, "{:.3}", .{cf.view[0]}) };
+    }
+
+    fn pitch(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        return .{ .text = fit(buf, "{:.3}", .{cf.view[1]}) };
+    }
+
+    fn health(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        const hp = cf.hp orelse return .{};
+        return .{ .text = fit(buf, "{:.0}", .{hp}) };
+    }
+
+    fn armor(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        const ap = cf.ap orelse return .{};
+        return .{ .text = fit(buf, "{:.1}", .{ap}) };
+    }
+
+    fn E(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        _ = row;
+        return .{};
+    }
+
+    fn A1(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        _ = row;
+        return .{};
+    }
+
+    fn A2(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        _ = row;
+        return .{};
+    }
+
+    fn R(buf: *Buf, row: Data) Cell {
+        _ = buf;
+        _ = row;
+        return .{};
+    }
+
+    fn cl_state(buf: *Buf, row: Data) Cell {
+        const style: Style = if (row.pf.cls != 5)
+            .{ .fg = .{ .rgb = 0xed333b }, .bold = true }
+        else
+            // Signal to reset.
+            .{};
+        return .{ .text = fit(buf, "{}", .{row.pf.cls}), .style = style };
+    }
+
+    fn z_pos(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        const pm = cf.postpm orelse return .{};
+        return .{ .text = fit(buf, "{:.3}", .{pm.pos[2]}) };
+    }
+
+    fn x_pos(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        const pm = cf.postpm orelse return .{};
+        return .{ .text = fit(buf, "{:.3}", .{pm.pos[0]}) };
+    }
+
+    fn y_pos(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        const pm = cf.postpm orelse return .{};
+        return .{ .text = fit(buf, "{:.3}", .{pm.pos[1]}) };
+    }
+
+    fn sh_seed(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        return .{ .text = fit(buf, "{}", .{cf.ss}) };
+    }
+
+    fn fr_time_rem(buf: *Buf, row: Data) Cell {
+        const cf = row.cf orelse return .{};
+        const rem = cf.rem orelse return .{};
+        return .{ .text = fit(buf, "{e:.2}", .{rem}) };
+    }
+};
+
+const Background = struct {
+    const Data = ColumnSpec.Data;
+
+    fn rgba(hex: u32) c.GdkRGBA {
         return .{
-            .name = name,
-            .template = template,
-            .header_layout = null,
-            .template_layout = null,
-            .layouts = .empty,
-            .xalign = xalign,
-            .static_style = static_style,
-            .bind = bind,
-            .background = background orelse transparent,
+            .red = @as(f32, @floatFromInt(hex >> 16)) / 255,
+            .green = @as(f32, @floatFromInt((hex >> 8) & 0xFF)) / 255,
+            .blue = @as(f32, @floatFromInt(hex & 0xFF)) / 255,
+            .alpha = 1,
         };
     }
+
+    fn G(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const pm = cf.postpm orelse return null;
+        return if (pm.og) rgba(0x2ec27e) else null;
+    }
+
+    fn K(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const pm = cf.postpm orelse return null;
+        return switch (pm.dst) {
+            1 => rgba(0x77767b),
+            2 => rgba(0x241f31),
+            else => null,
+        };
+    }
+
+    fn L(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const pm = cf.postpm orelse return null;
+        return if (pm.ol) rgba(0x865e3c) else null;
+    }
+
+    fn W(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const pm = cf.postpm orelse return null;
+        return switch (pm.wlvl) {
+            1 => rgba(0x62a0ea),
+            2 => rgba(0x1a5fb4),
+            else => null,
+        };
+    }
+
+    fn J(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const down = (cf.btns & (1 << 1)) > 0;
+        return if (down) rgba(0xf5c211) else null;
+    }
+
+    fn D(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const down = (cf.btns & (1 << 2)) > 0;
+        return if (down) rgba(0xdc8add) else null;
+    }
+
+    fn F(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const x = cf.fsu[0];
+        if (x == 0) return null;
+        return if (x > 0) rgba(0x3584e4) else rgba(0xed333b);
+    }
+
+    fn S(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const x = cf.fsu[1];
+        if (x == 0) return null;
+        return if (x > 0) rgba(0x3584e4) else rgba(0xed333b);
+    }
+
+    fn U(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const x = cf.fsu[2];
+        if (x == 0) return null;
+        return if (x > 0) rgba(0x3584e4) else rgba(0xed333b);
+    }
+
+    fn E(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const down = (cf.btns & (1 << 5)) > 0;
+        return if (down) rgba(0xf5c211) else null;
+    }
+
+    fn A1(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const down = (cf.btns & (1 << 0)) > 0;
+        return if (down) rgba(0xf5c211) else null;
+    }
+
+    fn A2(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const down = (cf.btns & (1 << 11)) > 0;
+        return if (down) rgba(0xf5c211) else null;
+    }
+
+    fn R(row: Data) ?c.GdkRGBA {
+        const cf = row.cf orelse return null;
+        const down = (cf.btns & (1 << 13)) > 0;
+        return if (down) rgba(0xf5c211) else null;
+    }
+};
+
+const column_specs = [_]ColumnSpec{
+    .{ .name = "Frame", .template = "99999", .bind = Bind.frame },
+    .{ .name = "Time", .template = "0.000", .xalign = .left, .style = .{ .dimmed = true }, .bind = Bind.time },
+    .{ .name = "Ms", .template = "99", .style = .{ .dimmed = true }, .bind = Bind.ms },
+    .{ .name = "Speed", .template = "9999.999", .bind = Bind.speed },
+    .{ .name = "Vel. Yaw", .template = "-999.999", .bind = Bind.vel_yaw },
+    .{ .name = "Vert. Speed", .template = "-9999.9", .bind = Bind.vert_speed },
+    .{ .name = "G", .template = "W", .xalign = .left, .bind = Bind.G, .background = Background.G },
+    .{ .name = "K", .template = "W", .xalign = .left, .bind = Bind.K, .background = Background.K },
+    .{ .name = "L", .template = "W", .xalign = .left, .bind = Bind.L, .background = Background.L },
+    .{ .name = "W", .template = "W", .xalign = .left, .bind = Bind.W, .background = Background.W },
+    .{ .name = "J", .template = "W", .xalign = .left, .bind = Bind.J, .background = Background.J },
+    .{ .name = "D", .template = "W", .xalign = .left, .bind = Bind.D, .background = Background.D },
+    .{ .name = "F", .template = "W", .xalign = .center, .style = .{ .fg = .{ .rgb = 0xffffff }, .bold = true }, .bind = Bind.F, .background = Background.F },
+    .{ .name = "S", .template = "W", .xalign = .center, .style = .{ .fg = .{ .rgb = 0xffffff }, .bold = true }, .bind = Bind.S, .background = Background.S },
+    .{ .name = "U", .template = "W", .xalign = .center, .style = .{ .fg = .{ .rgb = 0xffffff }, .bold = true }, .bind = Bind.U, .background = Background.U },
+    .{ .name = "Yaw", .template = "-999.999", .bind = Bind.yaw },
+    .{ .name = "Pitch", .template = "-999.999", .bind = Bind.pitch },
+    .{ .name = "Health", .template = "999", .bind = Bind.health },
+    .{ .name = "Armor", .template = "999.9", .bind = Bind.armor },
+    .{ .name = "E", .template = "W", .xalign = .left, .bind = Bind.E, .background = Background.E },
+    .{ .name = "1", .template = "W", .xalign = .left, .bind = Bind.A1, .background = Background.A1 },
+    .{ .name = "2", .template = "W", .xalign = .left, .bind = Bind.A2, .background = Background.A2 },
+    .{ .name = "R", .template = "W", .xalign = .left, .bind = Bind.R, .background = Background.R },
+    .{ .name = "CL State", .template = "9", .xalign = .center, .style = .{ .dimmed = true }, .bind = Bind.cl_state },
+    .{ .name = "Z Position", .template = "-9999.999", .bind = Bind.z_pos },
+    .{ .name = "X Position", .template = "-9999.999", .bind = Bind.x_pos },
+    .{ .name = "Y Position", .template = "-9999.999", .bind = Bind.y_pos },
+    .{ .name = "Sh. Seed", .template = "99999", .style = .{ .dimmed = true }, .bind = Bind.sh_seed },
+    .{ .name = "Fr. Time Rem.", .template = "9.99e-9", .style = .{ .dimmed = true }, .bind = Bind.fr_time_rem },
+};
+
+const Column = struct {
+    header_layout: ?SizedLayout = null,
+    template_layout: ?SizedLayout = null,
+    layouts: ArrayList(*c.PangoLayout) = .empty,
 
     fn dispose(self: *@This(), gpa: Allocator) void {
         std.debug.assert(self.header_layout == null);
@@ -151,12 +472,12 @@ const Column = struct {
         self.layouts.clearRetainingCapacity();
     }
 
-    fn ensureSizingLayouts(self: *@This(), widget: *c.GtkWidget) void {
+    fn ensureSizingLayouts(self: *@This(), spec: ColumnSpec, widget: *c.GtkWidget) void {
         if (self.header_layout != null) return;
 
         // Header.
         const header_layout = c.gtk_widget_create_pango_layout(widget, null).?;
-        c.pango_layout_set_text(header_layout, self.name.ptr, @intCast(self.name.len));
+        c.pango_layout_set_text(header_layout, spec.name.ptr, @intCast(spec.name.len));
 
         const context = c.pango_layout_get_context(header_layout);
         const desc = c.pango_context_get_font_description(context);
@@ -176,7 +497,7 @@ const Column = struct {
 
         // Template.
         const template_layout = c.gtk_widget_create_pango_layout(widget, null).?;
-        c.pango_layout_set_text(template_layout, self.template.ptr, @intCast(self.template.len));
+        c.pango_layout_set_text(template_layout, spec.template.ptr, @intCast(spec.template.len));
 
         const attrs = c.pango_attr_list_new().?;
         defer c.pango_attr_list_unref(attrs);
@@ -206,7 +527,7 @@ pub const TlrTable = extern struct {
     log: ?*LoadedLog,
 
     // Extern structs aren't allowed to contain ?[]Column...
-    columns: ?*[29]Column,
+    columns: ?*[column_specs.len]Column,
     first_row_is: usize,
     last_row_is: usize,
 
@@ -355,347 +676,8 @@ pub const TlrTable = extern struct {
     }
 
     fn init(self: *Self) void {
-        const Bind = struct {
-            const Data = Column.Data;
-
-            fn fit(buf: *Buf, comptime fmt: []const u8, args: anytype) []const u8 {
-                return std.fmt.bufPrint(buf, fmt, args) catch return buf;
-            }
-
-            fn frame(buf: *Buf, row: Data) Cell {
-                return .{ .text = fit(buf, "{}", .{row.n}) };
-            }
-
-            fn time(buf: *Buf, row: Data) Cell {
-                const ft = row.pf.ft orelse return .{};
-                return .{ .text = fit(buf, "{:.3}", .{ft}) };
-            }
-
-            fn ms(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                return .{ .text = fit(buf, "{}", .{cf.ms}) };
-            }
-
-            fn speed(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                const pm = cf.postpm orelse return .{};
-
-                const vel = pm.vel;
-                if (vel[0] == 0 and vel[1] == 0) return .{};
-
-                return .{ .text = fit(buf, "{:.3}", .{math.hypot(vel[0], vel[1])}) };
-            }
-
-            fn vel_yaw(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                const pm = cf.postpm orelse return .{};
-
-                const vel = pm.vel;
-                if (vel[0] == 0 and vel[1] == 0) return .{};
-
-                return .{ .text = fit(buf, "{:.3}", .{math.atan2(vel[1], vel[0]) * math.deg_per_rad}) };
-            }
-
-            fn vert_speed(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                const pm = cf.postpm orelse return .{};
-
-                const z = pm.vel[2];
-                if (z == 0) return .{};
-
-                const style: Style = if (z > 0)
-                    .{ .fg = .{ .rgb = 0x1c71d8 } }
-                else
-                    .{ .fg = .{ .rgb = 0xed333b } };
-
-                return .{ .text = fit(buf, "{:.1}", .{z}), .style = style };
-            }
-
-            fn G(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                _ = row;
-                return .{};
-            }
-
-            fn K(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                _ = row;
-                return .{};
-            }
-
-            fn L(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                _ = row;
-                return .{};
-            }
-
-            fn W(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                _ = row;
-                return .{};
-            }
-
-            fn J(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                _ = row;
-                return .{};
-            }
-
-            fn D(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                _ = row;
-                return .{};
-            }
-
-            fn F(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                const cf = row.cf orelse return .{};
-
-                const x = cf.fsu[0];
-                if (x == 0) return .{};
-
-                return .{ .text = if (x > 0) "F" else "B" };
-            }
-
-            fn S(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                const cf = row.cf orelse return .{};
-
-                const x = cf.fsu[1];
-                if (x == 0) return .{};
-
-                return .{ .text = if (x > 0) "R" else "L" };
-            }
-
-            fn U(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                const cf = row.cf orelse return .{};
-
-                const x = cf.fsu[2];
-                if (x == 0) return .{};
-
-                return .{ .text = if (x > 0) "U" else "D" };
-            }
-
-            fn yaw(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                return .{ .text = fit(buf, "{:.3}", .{cf.view[0]}) };
-            }
-
-            fn pitch(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                return .{ .text = fit(buf, "{:.3}", .{cf.view[1]}) };
-            }
-
-            fn health(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                const hp = cf.hp orelse return .{};
-                return .{ .text = fit(buf, "{:.0}", .{hp}) };
-            }
-
-            fn armor(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                const ap = cf.ap orelse return .{};
-                return .{ .text = fit(buf, "{:.1}", .{ap}) };
-            }
-
-            fn E(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                _ = row;
-                return .{};
-            }
-
-            fn A1(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                _ = row;
-                return .{};
-            }
-
-            fn A2(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                _ = row;
-                return .{};
-            }
-
-            fn R(buf: *Buf, row: Data) Cell {
-                _ = buf;
-                _ = row;
-                return .{};
-            }
-
-            fn cl_state(buf: *Buf, row: Data) Cell {
-                const style: Style = if (row.pf.cls != 5)
-                    .{ .fg = .{ .rgb = 0xed333b }, .bold = true }
-                else
-                    // Signal to reset.
-                    .{};
-                return .{ .text = fit(buf, "{}", .{row.pf.cls}), .style = style };
-            }
-
-            fn z_pos(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                const pm = cf.postpm orelse return .{};
-                return .{ .text = fit(buf, "{:.3}", .{pm.pos[2]}) };
-            }
-
-            fn x_pos(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                const pm = cf.postpm orelse return .{};
-                return .{ .text = fit(buf, "{:.3}", .{pm.pos[0]}) };
-            }
-
-            fn y_pos(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                const pm = cf.postpm orelse return .{};
-                return .{ .text = fit(buf, "{:.3}", .{pm.pos[1]}) };
-            }
-
-            fn sh_seed(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                return .{ .text = fit(buf, "{}", .{cf.ss}) };
-            }
-
-            fn fr_time_rem(buf: *Buf, row: Data) Cell {
-                const cf = row.cf orelse return .{};
-                const rem = cf.rem orelse return .{};
-                return .{ .text = fit(buf, "{e:.2}", .{rem}) };
-            }
-        };
-
-        const Background = struct {
-            const Data = Column.Data;
-
-            fn rgba(hex: u32) c.GdkRGBA {
-                return .{
-                    .red = @as(f32, @floatFromInt(hex >> 16)) / 255,
-                    .green = @as(f32, @floatFromInt((hex >> 8) & 0xFF)) / 255,
-                    .blue = @as(f32, @floatFromInt(hex & 0xFF)) / 255,
-                    .alpha = 1,
-                };
-            }
-
-            fn G(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const pm = cf.postpm orelse return null;
-                return if (pm.og) rgba(0x2ec27e) else null;
-            }
-
-            fn K(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const pm = cf.postpm orelse return null;
-                return switch (pm.dst) {
-                    1 => rgba(0x77767b),
-                    2 => rgba(0x241f31),
-                    else => null,
-                };
-            }
-
-            fn L(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const pm = cf.postpm orelse return null;
-                return if (pm.ol) rgba(0x865e3c) else null;
-            }
-
-            fn W(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const pm = cf.postpm orelse return null;
-                return switch (pm.wlvl) {
-                    1 => rgba(0x62a0ea),
-                    2 => rgba(0x1a5fb4),
-                    else => null,
-                };
-            }
-
-            fn J(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const down = (cf.btns & (1 << 1)) > 0;
-                return if (down) rgba(0xf5c211) else null;
-            }
-
-            fn D(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const down = (cf.btns & (1 << 2)) > 0;
-                return if (down) rgba(0xdc8add) else null;
-            }
-
-            fn F(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const x = cf.fsu[0];
-                if (x == 0) return null;
-                return if (x > 0) rgba(0x3584e4) else rgba(0xed333b);
-            }
-
-            fn S(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const x = cf.fsu[1];
-                if (x == 0) return null;
-                return if (x > 0) rgba(0x3584e4) else rgba(0xed333b);
-            }
-
-            fn U(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const x = cf.fsu[2];
-                if (x == 0) return null;
-                return if (x > 0) rgba(0x3584e4) else rgba(0xed333b);
-            }
-
-            fn E(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const down = (cf.btns & (1 << 5)) > 0;
-                return if (down) rgba(0xf5c211) else null;
-            }
-
-            fn A1(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const down = (cf.btns & (1 << 0)) > 0;
-                return if (down) rgba(0xf5c211) else null;
-            }
-
-            fn A2(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const down = (cf.btns & (1 << 11)) > 0;
-                return if (down) rgba(0xf5c211) else null;
-            }
-
-            fn R(row: Data) ?c.GdkRGBA {
-                const cf = row.cf orelse return null;
-                const down = (cf.btns & (1 << 13)) > 0;
-                return if (down) rgba(0xf5c211) else null;
-            }
-        };
-
-        self.columns = root.gpa.create([29]Column) catch @panic("out of memory");
-        self.columns.?.* = .{
-            .init("Frame", "99999", .right, .{}, Bind.frame, null),
-            .init("Time", "0.000", .left, .{ .dimmed = true }, Bind.time, null),
-            .init("Ms", "99", .right, .{ .dimmed = true }, Bind.ms, null),
-            .init("Speed", "9999.999", .right, .{}, Bind.speed, null),
-            .init("Vel. Yaw", "-999.999", .right, .{}, Bind.vel_yaw, null),
-            .init("Vert. Speed", "-9999.9", .right, .{}, Bind.vert_speed, null),
-            .init("G", "W", .left, .{}, Bind.G, Background.G),
-            .init("K", "W", .left, .{}, Bind.K, Background.K),
-            .init("L", "W", .left, .{}, Bind.L, Background.L),
-            .init("W", "W", .left, .{}, Bind.W, Background.W),
-            .init("J", "W", .left, .{}, Bind.J, Background.J),
-            .init("D", "W", .left, .{}, Bind.D, Background.D),
-            .init("F", "W", .center, .{ .fg = .{ .rgb = 0xffffff }, .bold = true }, Bind.F, Background.F),
-            .init("S", "W", .center, .{ .fg = .{ .rgb = 0xffffff }, .bold = true }, Bind.S, Background.S),
-            .init("U", "W", .center, .{ .fg = .{ .rgb = 0xffffff }, .bold = true }, Bind.U, Background.U),
-            .init("Yaw", "-999.999", .right, .{}, Bind.yaw, null),
-            .init("Pitch", "-999.999", .right, .{}, Bind.pitch, null),
-            .init("Health", "999", .right, .{}, Bind.health, null),
-            .init("Armor", "999.9", .right, .{}, Bind.armor, null),
-            .init("E", "W", .left, .{}, Bind.E, Background.E),
-            .init("1", "W", .left, .{}, Bind.A1, Background.A1),
-            .init("2", "W", .left, .{}, Bind.A2, Background.A2),
-            .init("R", "W", .left, .{}, Bind.R, Background.R),
-            .init("CL State", "9", .center, .{ .dimmed = true }, Bind.cl_state, null),
-            .init("Z Position", "-9999.999", .right, .{}, Bind.z_pos, null),
-            .init("X Position", "-9999.999", .right, .{}, Bind.x_pos, null),
-            .init("Y Position", "-9999.999", .right, .{}, Bind.y_pos, null),
-            .init("Sh. Seed", "99999", .right, .{ .dimmed = true }, Bind.sh_seed, null),
-            .init("Fr. Time Rem.", "9.99e-9", .right, .{ .dimmed = true }, Bind.fr_time_rem, null),
-        };
+        self.columns = root.gpa.create([column_specs.len]Column) catch @panic("out of memory");
+        self.columns.?.* = .{Column{}} ** column_specs.len;
 
         c.gtk_widget_add_css_class(self.as(c.GtkWidget), "view");
         c.gtk_widget_set_overflow(self.as(c.GtkWidget), c.GTK_OVERFLOW_HIDDEN);
@@ -708,9 +690,9 @@ pub const TlrTable = extern struct {
         const self: *Self = @ptrCast(@alignCast(scrollable.?));
 
         var header_h: i32 = 0;
-        for (self.columns.?) |*column| {
+        for (column_specs, self.columns.?) |spec, *column| {
             // This is called before measure...
-            column.ensureSizingLayouts(self.as(c.GtkWidget));
+            column.ensureSizingLayouts(spec, self.as(c.GtkWidget));
 
             header_h = @max(header_h, column.header_layout.?.h);
         }
@@ -742,7 +724,7 @@ pub const TlrTable = extern struct {
         var row_h: i32 = 0;
 
         for (0.., self.columns.?) |i, *column| {
-            column.ensureSizingLayouts(widget.?);
+            column.ensureSizingLayouts(column_specs[i], widget.?);
 
             if (i > 0) total_w += 1; // Border.
             total_w += column.width() + x_padding * 2;
@@ -865,7 +847,7 @@ pub const TlrTable = extern struct {
             const first_row: usize = @intFromFloat(start_row);
 
             var n: usize = 0;
-            for (0.., self.columns.?) |i, *column| {
+            for (0.., column_specs, self.columns.?) |i, spec, *column| {
                 const border: i32 = if (i > 0) 1 else 0;
                 const column_w = column.width();
 
@@ -887,7 +869,7 @@ pub const TlrTable = extern struct {
                         // We don't know here if the column uses dynamic style; in case it doesn't, set here.
                         const attrs = c.pango_attr_list_new().?;
                         c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
-                        column.static_style.insert(attrs);
+                        spec.style.insert(attrs);
                         c.pango_layout_set_attributes(layout, attrs);
                         c.pango_attr_list_unref(attrs);
 
@@ -896,7 +878,7 @@ pub const TlrTable = extern struct {
                     const layout = column.layouts.items[n];
 
                     const log_row = log.rows.items[n + first_row];
-                    const row = Column.Data{
+                    const row = ColumnSpec.Data{
                         .n = n + first_row + 1,
                         .pf = log_row.pf,
                         .cf = log_row.cf,
@@ -904,7 +886,7 @@ pub const TlrTable = extern struct {
 
                     if (n >= format_from) {
                         var buf: Buf = undefined;
-                        const cell = column.bind(&buf, row);
+                        const cell = spec.bind(&buf, row);
 
                         // Avoid reformatting if text matches.
                         //
@@ -917,7 +899,7 @@ pub const TlrTable = extern struct {
                             if (cell.style) |style| {
                                 const attrs = c.pango_attr_list_new().?;
                                 c.pango_attr_list_insert(attrs, c.pango_attr_font_features_new("tnum"));
-                                column.static_style.insert(attrs);
+                                spec.style.insert(attrs);
                                 style.insert(attrs);
                                 c.pango_layout_set_attributes(layout, attrs);
                                 c.pango_attr_list_unref(attrs);
@@ -933,7 +915,7 @@ pub const TlrTable = extern struct {
                         }
                     }
 
-                    if (column.background(row)) |background| {
+                    if (spec.background(row)) |background| {
                         c.gtk_snapshot_append_color(snap, &background, &.{
                             .origin = .{ .x = 0, .y = 0 },
                             .size = .{
@@ -944,9 +926,9 @@ pub const TlrTable = extern struct {
                     }
 
                     var w = column_w;
-                    if (column.xalign != .left) {
+                    if (spec.xalign != .left) {
                         c.pango_layout_get_pixel_size(layout, &w, null);
-                        if (column.xalign == .center)
+                        if (spec.xalign == .center)
                             w = @divTrunc(column_w + w, 2);
                     }
                     const offset: f32 = @floatFromInt(column_w - w);
