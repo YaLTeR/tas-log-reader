@@ -14,6 +14,8 @@ const TasLog = @This();
 
 meta: Meta,
 pf: ArrayList(PhysicsFrame),
+cf: ArrayList(CommandFrame),
+rows: ArrayList(Row),
 arena: ArenaAllocator,
 
 pub const Meta = struct {
@@ -61,7 +63,7 @@ pub const PhysicsFrame = struct {
     p: bool = false,
     rng: ?Rng = null,
     cbuf: ?[]const u8 = null,
-    cf: []CommandFrame,
+    cfi: ?u32 = null,
     cmsg: ?[][]const u8 = null,
 };
 
@@ -97,6 +99,12 @@ pub const PmState = struct {
     dst: u8 = 0,
 };
 
+pub const Row = struct {
+    pfi: u32,
+    // Command frame number (add to pf.cfi).
+    cfn: u32,
+};
+
 pub fn parse(rv: *TasLog, gpa: Allocator, contents: []const u8) ParseError(Scanner)!void {
     const zone = Tracy.zoneN(@src(), "TasLog::parse");
     defer zone.end();
@@ -104,6 +112,8 @@ pub fn parse(rv: *TasLog, gpa: Allocator, contents: []const u8) ParseError(Scann
     rv.* = .{
         .meta = undefined,
         .pf = .empty,
+        .cf = .empty,
+        .rows = .empty,
         .arena = ArenaAllocator.init(gpa),
     };
     errdefer rv.deinit();
@@ -124,7 +134,7 @@ pub fn parse(rv: *TasLog, gpa: Allocator, contents: []const u8) ParseError(Scann
 
     if (.array_begin != try scanner.next()) return error.UnexpectedToken;
 
-    while (true) {
+    outer: while (true) {
         if (scanner.peekNextTokenType()) |next| switch (next) {
             .array_end => break,
             .object_begin => {},
@@ -136,14 +146,96 @@ pub fn parse(rv: *TasLog, gpa: Allocator, contents: []const u8) ParseError(Scann
             }
             break;
         }
+        _ = try scanner.next(); // Consume .object_begin.
 
-        const pf = std.json.innerParse(TasLog.PhysicsFrame, arena, &scanner, options) catch |err| {
-            if (err != error.UnexpectedEndOfInput) {
-                return err;
+        try rv.pf.ensureUnusedCapacity(gpa, 1);
+        try rv.rows.ensureUnusedCapacity(gpa, 1);
+
+        var pf = PhysicsFrame{};
+        while (true) {
+            const name_token = try scanner.nextAllocMax(arena, .alloc_if_needed, options.max_value_len.?);
+            const field_name = switch (name_token) {
+                inline .string, .allocated_string => |slice| slice,
+                .object_end => break,
+                else => return error.UnexpectedToken,
+            };
+
+            inline for (@typeInfo(PhysicsFrame).@"struct".fields) |field| {
+                comptime if (std.mem.eql(u8, field.name, "cfi")) {
+                    continue;
+                };
+
+                if (std.mem.eql(u8, field.name, field_name)) {
+                    freeAllocated(arena, name_token);
+                    @field(pf, field.name) = try json.innerParse(field.type, arena, &scanner, options);
+                    break;
+                }
+            } else {
+                // Didn't match anything.
+                if (std.mem.eql(u8, "cf", field_name)) {
+                    freeAllocated(arena, name_token);
+
+                    // Parse command frames array.
+                    if (scanner.peekNextTokenType()) |next| switch (next) {
+                        .array_begin => {},
+                        else => return error.UnexpectedToken,
+                    } else |err| {
+                        // End of input is fine when the log terminates before completion.
+                        if (err != error.UnexpectedEndOfInput) {
+                            return err;
+                        }
+                        break :outer;
+                    }
+                    _ = try scanner.next(); // Consume .array_begin.
+
+                    while (true) {
+                        if (scanner.peekNextTokenType()) |next| switch (next) {
+                            .array_end => {
+                                _ = try scanner.next();
+                                break;
+                            },
+                            .object_begin => {},
+                            else => return error.UnexpectedToken,
+                        } else |err| {
+                            // End of input is fine when the log terminates before completion.
+                            if (err != error.UnexpectedEndOfInput) {
+                                return err;
+                            }
+                            break;
+                        }
+
+                        try rv.cf.ensureUnusedCapacity(gpa, 1);
+
+                        const cf = std.json.innerParse(TasLog.CommandFrame, arena, &scanner, options) catch |err| {
+                            if (err != error.UnexpectedEndOfInput) {
+                                return err;
+                            }
+                            break :outer;
+                        };
+
+                        const cfi: u32 = @intCast(rv.cf.items.len);
+                        if (pf.cfi == null) {
+                            pf.cfi = cfi;
+                        } else {
+                            try rv.rows.ensureUnusedCapacity(gpa, 1);
+                        }
+                        const cfn = cfi - pf.cfi.?;
+
+                        rv.cf.appendAssumeCapacity(cf);
+                        rv.rows.appendAssumeCapacity(Row{ .pfi = @intCast(rv.pf.items.len), .cfn = cfn });
+                    }
+                } else {
+                    freeAllocated(arena, name_token);
+                    try scanner.skipValue();
+                }
             }
-            break;
-        };
-        try rv.pf.append(gpa, pf);
+        }
+
+        // Create a row if there were no command frames.
+        if (pf.cfi == null) {
+            rv.rows.appendAssumeCapacity(Row{ .pfi = @intCast(rv.pf.items.len), .cfn = 0 });
+        }
+        rv.pf.appendAssumeCapacity(pf);
     }
 }
 
@@ -151,6 +243,8 @@ pub fn deinit(self: *TasLog) void {
     const gpa = self.arena.child_allocator;
     self.arena.deinit();
     self.pf.deinit(gpa);
+    self.cf.deinit(gpa);
+    self.rows.deinit(gpa);
 }
 
 fn freeAllocated(allocator: Allocator, token: Token) void {

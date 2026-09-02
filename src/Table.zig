@@ -699,7 +699,7 @@ pub const TlrTable = extern struct {
         errdefer root.gpa.destroy(log);
 
         try log.init(root.gpa, contents);
-        std.log.debug("loaded {} rows", .{log.rows.items.len});
+        std.log.debug("loaded {} rows", .{log.log.rows.items.len});
 
         self.log = log;
     }
@@ -772,7 +772,7 @@ pub const TlrTable = extern struct {
             row_h = @max(row_h, column.template_layout.?.h);
         }
         header_h += 1; // Border.
-        const n_rows: i32 = if (self.log) |log| @intCast(log.rows.items.len) else 0;
+        const n_rows: i32 = if (self.log) |log| @intCast(log.log.rows.items.len) else 0;
         h = header_h + row_h * n_rows + y_padding * 2 * (n_rows + 1) + (n_rows - 1);
 
         switch (orientation) {
@@ -812,7 +812,7 @@ pub const TlrTable = extern struct {
             row_h = @max(row_h, column.template_layout.?.h);
         }
         header_h += 1; // Border.
-        const n_rows: i32 = if (self.log) |log| @intCast(log.rows.items.len) else 0;
+        const n_rows: i32 = if (self.log) |log| @intCast(log.log.rows.items.len) else 0;
         h = (row_h + y_padding * 2) * n_rows + (n_rows - 1);
 
         if (self.hadjustment) |adj| {
@@ -902,7 +902,7 @@ pub const TlrTable = extern struct {
 
                 // Cannot use for (0..) |n| because Zig complains about an unbounded loop...
                 n = 0;
-                while (h < full_height and n + first_row < log.rows.items.len) {
+                while (h < full_height and n + first_row < log.log.rows.items.len) : (n += 1) {
                     if (column.layouts.items.len <= n) {
                         const layout = c.gtk_widget_create_pango_layout(widget, null).?;
 
@@ -917,11 +917,13 @@ pub const TlrTable = extern struct {
                     }
                     const layout = column.layouts.items[n];
 
-                    const log_row = log.rows.items[n + first_row];
+                    const log_row = log.log.rows.items[n + first_row];
+                    const pf = &log.log.pf.items[log_row.pfi];
+                    const cf = if (pf.cfi) |cfi| &log.log.cf.items[cfi + log_row.cfn] else null;
                     const row = ColumnSpec.Data{
                         .n = n + first_row + 1,
-                        .pf = log_row.pf,
-                        .cf = log_row.cf,
+                        .pf = pf,
+                        .cf = cf,
                     };
 
                     if (n >= format_from) {
@@ -976,8 +978,6 @@ pub const TlrTable = extern struct {
                     c.gtk_snapshot_append_layout(snap, layout, &color);
                     c.gtk_snapshot_translate(snap, &.{ .x = -(x_padding + offset), .y = @floatFromInt(row_h - y_padding + 1) });
                     h += row_h + 1;
-
-                    n += 1;
                 }
                 // std.log.debug("first row is {}, drew {}", .{ first_row, n });
 

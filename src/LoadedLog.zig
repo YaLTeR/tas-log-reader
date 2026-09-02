@@ -10,54 +10,17 @@ const LoadedLog = @This();
 
 contents: []const u8,
 log: TasLog,
-rows: ArrayList(Row),
-
-const Row = struct {
-    pf: *const TasLog.PhysicsFrame,
-    cf: ?*const TasLog.CommandFrame,
-};
 
 // Borrows from contents. Contents must be kept alive until deinit().
 pub fn init(self: *LoadedLog, gpa: Allocator, contents: []const u8) !void {
-    const zone = Tracy.zoneN(@src(), "Log::init");
-    defer zone.end();
-
     self.* = .{
         .contents = contents,
         .log = undefined,
-        .rows = .empty,
     };
-    try self.log.parse(gpa, contents);
-
-    errdefer self.log.deinit();
-    errdefer self.rows.deinit(gpa);
-
-    for (self.log.pf.items) |*pf| {
-        if (pf.cf.len == 0) {
-            const row = Row{
-                .pf = pf,
-                .cf = null,
-            };
-            try self.rows.append(gpa, row);
-        } else {
-            for (pf.cf) |*cf| {
-                const row = Row{
-                    .pf = pf,
-                    .cf = cf,
-                };
-                try self.rows.append(gpa, row);
-            }
-        }
-    }
+    return self.log.parse(gpa, contents);
 }
 
 pub fn deinit(self: *LoadedLog) void {
-    const zone = Tracy.zoneN(@src(), "Log::deinit");
-    defer zone.end();
-
-    const gpa = self.log.arena.child_allocator;
-    self.rows.deinit(gpa);
     self.log.deinit();
-
     self.* = undefined;
 }
