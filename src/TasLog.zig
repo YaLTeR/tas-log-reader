@@ -279,18 +279,83 @@ fn freeAllocated(allocator: Allocator, token: Token) void {
     }
 }
 
+fn verifyInvariants(self: *TasLog) !void {
+    for (self.rows.items) |row| {
+        try std.testing.expect(row.pfi < self.pf.items.len);
+
+        const pf = self.pf.items[row.pfi];
+        if (pf.cfi) |cfi| {
+            try std.testing.expect(cfi + row.cfn < self.cf.items.len);
+        } else {
+            try std.testing.expectEqual(0, row.cfn);
+        }
+    }
+}
+
+test "incomplete command frame rolls back its physics frame" {
+    const contents =
+        \\{"pf":[{"cf":[{"ms":1,"btns":0,"fsu":[0,0,0],"view":[0,0,0],"ss":1}]},
+        \\  {"cf":[{"ms":1,"btns":0,"fsu":[0,0,0],"view":[0,0,0],"ss":1},{"ms":
+    ;
+
+    var log: TasLog = undefined;
+    try log.parse(std.testing.allocator, contents);
+    defer log.deinit();
+
+    try std.testing.expectEqual(@as(usize, 1), log.pf.items.len);
+    try std.testing.expectEqual(@as(usize, 1), log.cf.items.len);
+    try std.testing.expectEqual(@as(usize, 1), log.rows.items.len);
+    try log.verifyInvariants();
+}
+
+test "incomplete later field rolls back command frames" {
+    const contents =
+        \\{"pf":[{"cf":[{"ms":1,"btns":0,"fsu":[0,0,0],"view":[0,0,0],"ss":1}]},
+        \\  {"cf":[{"ms":1,"btns":0,"fsu":[0,0,0],"view":[0,0,0],"ss":1}],"cmsg":["unterminated
+    ;
+
+    var log: TasLog = undefined;
+    try log.parse(std.testing.allocator, contents);
+    defer log.deinit();
+
+    try std.testing.expectEqual(@as(usize, 1), log.pf.items.len);
+    try std.testing.expectEqual(@as(usize, 1), log.cf.items.len);
+    try std.testing.expectEqual(@as(usize, 1), log.rows.items.len);
+    try log.verifyInvariants();
+}
+
+test "rows index command frames" {
+    const contents =
+        \\{"pf":[{"cf":[
+        \\  {"ms":1,"btns":0,"fsu":[0,0,0],"view":[0,0,0],"ss":1},
+        \\  {"ms":1,"btns":0,"fsu":[0,0,0],"view":[0,0,0],"ss":1}
+        \\]},{"cf":[]}]}
+    ;
+
+    var log: TasLog = undefined;
+    try log.parse(std.testing.allocator, contents);
+    defer log.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), log.pf.items.len);
+    try std.testing.expectEqual(@as(usize, 2), log.cf.items.len);
+    try std.testing.expectEqual(@as(usize, 3), log.rows.items.len);
+    try std.testing.expectEqual(Row{ .pfi = 0, .cfn = 0 }, log.rows.items[0]);
+    try std.testing.expectEqual(Row{ .pfi = 0, .cfn = 1 }, log.rows.items[1]);
+    try std.testing.expectEqual(Row{ .pfi = 1, .cfn = 0 }, log.rows.items[2]);
+    try log.verifyInvariants();
+}
+
 test "fuzz" {
     try std.testing.fuzz({}, fuzzParse, .{});
 }
 
 fn fuzzParse(context: void, smith: *std.testing.Smith) !void {
     _ = context;
-    const gpa = std.testing.allocator;
-
     var buf: [1024]u8 = undefined;
     const contents = buf[0..smith.slice(&buf)];
 
     var log: TasLog = undefined;
-    log.parse(gpa, contents) catch return;
-    log.deinit();
+    log.parse(std.testing.allocator, contents) catch return;
+    defer log.deinit();
+    try log.verifyInvariants();
 }
