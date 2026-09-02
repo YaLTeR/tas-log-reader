@@ -12,6 +12,10 @@ const Tracy = @import("root.zig").Tracy;
 
 const TasLog = @This();
 
+// Store command frames as one big global list, as opposed to a small list in each PhysicsFrame.
+// The idea was that this would reduce burden on the allocator since the big list would grow
+// much less frequently compared to allocating thousands of 1-item lists (in practice).
+// However, benchmarking shows that this layout barely makes any difference to wall clock time.
 meta: Meta,
 pf: ArrayList(PhysicsFrame),
 cf: ArrayList(CommandFrame),
@@ -63,6 +67,7 @@ pub const PhysicsFrame = struct {
     p: bool = false,
     rng: ?Rng = null,
     cbuf: ?[]const u8 = null,
+    // Index into the global cf list.
     cfi: ?u32 = null,
     cmsg: ?[][]const u8 = null,
 };
