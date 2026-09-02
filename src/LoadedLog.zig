@@ -17,6 +17,7 @@ const Row = struct {
     cf: ?*const TasLog.CommandFrame,
 };
 
+// Borrows from contents. Contents must be kept alive until deinit().
 pub fn init(self: *LoadedLog, gpa: Allocator, contents: []const u8) !void {
     const zone = Tracy.zoneN(@src(), "Log::init");
     defer zone.end();
